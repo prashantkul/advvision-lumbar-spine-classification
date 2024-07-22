@@ -2,7 +2,7 @@
 
 ## Getting Started
 
-This repo contains work done for the Compute Vision project at Univeristy of Chicago Master of Science.
+This repo contains work done for the Computer Vision project at Univeristy of Chicago Master of Science.
 
 ## Dataset
 
