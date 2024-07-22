@@ -47,3 +47,36 @@ There are overall 75 labels for this dataset. 25 main labels and 3 secondary lab
   * Normal/Mild 
   * Moderate 
   * Severe
+
+
+advvision-lumbar-spine-classification/
+│
+├── data/                       # Data files (not uploaded to GitHub)
+│   ├── raw/                    # Raw, unprocessed data
+│   ├── processed/              # Processed data ready for analysis
+│
+├── notebooks/                  # Jupyter notebooks for analysis and model training
+│   ├── 1_EDA.ipynb             # Exploratory Data Analysis
+│   ├── 2_Model_Training.ipynb  # Model Training and Evaluation
+│   ├── 3_Model_Operations.ipynb# Model Operations
+│
+├── reports/                    # Project reports and documents
+│   ├── Final_Report.md         # Final report (markdown or PDF)
+│   ├── abstract.md             # Abstract
+│   ├── eda.md                  # Exploratory Data Analysis Report
+│   ├── model_training.md       # Model Training and Evaluation Report
+│   ├── model_operations.md     # Model Operations Report
+│   ├── conclusion.md           # Conclusion
+│
+├── src/                        # Source code for the project
+│   ├── data_preprocessing.py   # Data preprocessing scripts
+│   ├── model_training.py       # Model training scripts
+│   ├── model_evaluation.py     # Model evaluation scripts
+│   ├── model_operations.py     # Scripts for model deployment and maintenance
+│
+├── requirements.txt            # Project dependencies
+├── environment.yml             # Conda environment file
+├── README.md                   # Project overview and setup instructions
+├── .gitignore                  # Git ignore file
+│
+└── LICENSE                     # License file
