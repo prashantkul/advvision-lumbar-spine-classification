@@ -48,35 +48,30 @@ There are overall 75 labels for this dataset. 25 main labels and 3 secondary lab
   * Moderate 
   * Severe
 
+# Format of Github Repo
+Folder and File Descriptions
+1. data/:
+    * raw/: Contains the raw dataset files.
+    * processed/: Contains processed datasets ready for analysis.
+2. notebooks/:
+    * 1_EDA.ipynb: Notebook for Exploratory Data Analysis.
+    * 2_Model_Training.ipynb: Notebook for Model Training and Evaluation.
+    * 3_Model_Operations.ipynb: Notebook for Model Operations and deployment plans.
+3. reports/:
+    * Final_Report.md: The final compiled report.
+    * abstract.md: Abstract of the project.
+    * eda.md: Detailed report on Exploratory Data Analysis.
+    * model_training.md: Report on Model Training and Evaluation.
+    * model_operations.md: Report on Model Operations and deployment plans.
+    * conclusion.md: Conclusion of the project findings.
+4. src/:
+    * data_preprocessing.py: Scripts for preprocessing the data.
+    * model_training.py: Scripts for training the models.
+    * model_evaluation.py: Scripts for evaluating the models.
+    * model_operations.py: Scripts for deployment and maintenance of the models.
+5. requirements.txt: List of dependencies for the project, installable via pip.
+6. environment.yml: Conda environment configuration file.
+7. README.md: Overview of the project, setup instructions, and any other relevant information.
+8. .gitignore: Specifies files and directories to be ignored by git (e.g., data files, environment files).
+9. LICENSE: License file for the project.
 
-advvision-lumbar-spine-classification/
-│
-├── data/                       # Data files (not uploaded to GitHub)
-│   ├── raw/                    # Raw, unprocessed data
-│   ├── processed/              # Processed data ready for analysis
-│
-├── notebooks/                  # Jupyter notebooks for analysis and model training
-│   ├── 1_EDA.ipynb             # Exploratory Data Analysis
-│   ├── 2_Model_Training.ipynb  # Model Training and Evaluation
-│   ├── 3_Model_Operations.ipynb# Model Operations
-│
-├── reports/                    # Project reports and documents
-│   ├── Final_Report.md         # Final report (markdown or PDF)
-│   ├── abstract.md             # Abstract
-│   ├── eda.md                  # Exploratory Data Analysis Report
-│   ├── model_training.md       # Model Training and Evaluation Report
-│   ├── model_operations.md     # Model Operations Report
-│   ├── conclusion.md           # Conclusion
-│
-├── src/                        # Source code for the project
-│   ├── data_preprocessing.py   # Data preprocessing scripts
-│   ├── model_training.py       # Model training scripts
-│   ├── model_evaluation.py     # Model evaluation scripts
-│   ├── model_operations.py     # Scripts for model deployment and maintenance
-│
-├── requirements.txt            # Project dependencies
-├── environment.yml             # Conda environment file
-├── README.md                   # Project overview and setup instructions
-├── .gitignore                  # Git ignore file
-│
-└── LICENSE                     # License file
