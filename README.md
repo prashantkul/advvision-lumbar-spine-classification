@@ -47,3 +47,31 @@ There are overall 75 labels for this dataset. 25 main labels and 3 secondary lab
   * Normal/Mild 
   * Moderate 
   * Severe
+
+# Format of Github Repo
+Folder and File Descriptions
+1. data/:
+    * raw/: Contains the raw dataset files.
+    * processed/: Contains processed datasets ready for analysis.
+2. notebooks/:
+    * 1_EDA.ipynb: Notebook for Exploratory Data Analysis.
+    * 2_Model_Training.ipynb: Notebook for Model Training and Evaluation.
+    * 3_Model_Operations.ipynb: Notebook for Model Operations and deployment plans.
+3. reports/:
+    * Final_Report.md: The final compiled report.
+    * abstract.md: Abstract of the project.
+    * eda.md: Detailed report on Exploratory Data Analysis.
+    * model_training.md: Report on Model Training and Evaluation.
+    * model_operations.md: Report on Model Operations and deployment plans.
+    * conclusion.md: Conclusion of the project findings.
+4. src/:
+    * data_preprocessing.py: Scripts for preprocessing the data.
+    * model_training.py: Scripts for training the models.
+    * model_evaluation.py: Scripts for evaluating the models.
+    * model_operations.py: Scripts for deployment and maintenance of the models.
+5. requirements.txt: List of dependencies for the project, installable via pip.
+6. environment.yml: Conda environment configuration file.
+7. README.md: Overview of the project, setup instructions, and any other relevant information.
+8. .gitignore: Specifies files and directories to be ignored by git (e.g., data files, environment files).
+9. LICENSE: License file for the project.
+
