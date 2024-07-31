@@ -5,6 +5,7 @@ import cv2
 import tensorflow as tf
 from tensorflow.data import Dataset
 from sklearn.preprocessing import MinMaxScaler, LabelEncoder
+import vision_models.constants as constants
 
 class ImageLoader:
     """
@@ -257,6 +258,9 @@ class ImageLoader:
         if self.batch_size:
             train_dataset = train_dataset.batch(self.batch_size)
             val_dataset = val_dataset.batch(self.batch_size)
+        else:
+            train_dataset = train_dataset.batch(constants.BATCH_SIZE)
+            val_dataset = val_dataset.batch(constants.BATCH_SIZE)
 
         train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
         val_dataset = val_dataset.prefetch(tf.data.AUTOTUNE)
