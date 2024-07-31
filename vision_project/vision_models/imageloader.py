@@ -134,6 +134,9 @@ class ImageLoader:
             x = row['x']
             y = row['y']
             img, _, _ = self._preprocess_image(study_id, series_id, instance_number, x, y)
+            
+            # convert to RGB since many pretrained model use RGB
+            img = tf.image.grayscale_to_rgb(img) 
             yield img
 
     def label_generator(self):
@@ -162,7 +165,7 @@ class ImageLoader:
         """
         feature_dataset = tf.data.Dataset.from_generator(
             self.feature_generator,
-            output_signature=tf.TensorSpec(shape=(self.roi_size[0], self.roi_size[1], 1), dtype=tf.float32)
+            output_signature=tf.TensorSpec(shape=(self.roi_size[0], self.roi_size[1], 3), dtype=tf.float32)
         )
 
         label_dataset = tf.data.Dataset.from_generator(
@@ -264,6 +267,7 @@ class ImageLoader:
 
         train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
         val_dataset = val_dataset.prefetch(tf.data.AUTOTUNE)
+        print("Dataset created, you can now iterate over the dataset")
 
         return train_dataset, val_dataset
 
