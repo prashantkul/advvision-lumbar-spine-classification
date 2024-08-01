@@ -96,8 +96,8 @@ class DenseNetVisionModel(tf.keras.Model):
         for layer in self.base_model.layers[:-num_layers]:
             layer.trainable = False
 
-    def evaluate(self, test_generator):
-        return self.evaluate(test_generator)  # Use the built-in evaluate method
+    def evaluate(self, validation_generator):
+        return self.evaluate(validation_generator)  # Use the built-in evaluate method
 
-    def predict(self, input_data):
-        return self.predict(input_data)  # Use the built-in predict method
+    def predict(self, test_generator):
+        return self.predict(test_generator)  # Use the built-in predict method

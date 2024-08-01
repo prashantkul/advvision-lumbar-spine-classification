@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 import pydicom
@@ -65,26 +66,38 @@ class ImageLoader:
         image = image / np.max(image)
         return image
 
-    def _preprocess_image(self, study_id, series_id, instance_number, x, y):
+    def _preprocess_image(self, study_id, series_id):
         """
-        Preprocess a single image.
+        Preprocess all images in a series.
 
         Args:
             study_id (str): Study ID.
             series_id (str): Series ID.
-            instance_number (str): Instance number.
-            x (float): X-coordinate.
-            y (float): Y-coordinate.
 
-        Returns:
-            tuple: Preprocessed image tensor, x, and y coordinates.
+        Yields:
+            tuple: Preprocessed image tensor, study_id, series_id.
         """
-        file_path = f"{self.image_dir}/{study_id}/{series_id}/{instance_number}.dcm"
-        img = self._read_dicom(file_path)
-        img = tf.convert_to_tensor(img, dtype=tf.float32)
-        img = tf.expand_dims(img, axis=-1)  # Add channel dimension
-        img = tf.image.resize(img, self.roi_size)
-        return img, x, y
+        series_dir = f"{self.image_dir}/{study_id}/{series_id}"
+        images = []
+        for filename in os.listdir(series_dir):
+            if filename.endswith(".dcm"):
+                file_path = f"{series_dir}/{filename}"
+                img = self._read_dicom(file_path)
+                img = tf.convert_to_tensor(img, dtype=tf.float32)
+                img = tf.expand_dims(img, axis=-1)  # Add channel dimension
+                img = tf.image.resize(img, self.roi_size)
+                img = tf.image.grayscale_to_rgb(img)  # Convert to RGB
+                images.append(img)
+
+        # Pad images to 192 if necessary, we're padding to max number of dicom images in a series
+        # we precalculated that train_images/2508151528/1550325930 contains the largest number of
+        # images in a series with 192 images. THe model expects tensors of the same size, so we pad
+        # the images to 192. 
+        if len(images) < 192:
+            padding = tf.zeros((192 - len(images), *images[0].shape), dtype=tf.float32)
+            images = tf.concat([images, padding], axis=0)
+
+        return tf.stack(images)
 
     def _extract_patch(self, image, x, y, width, height):
         """
@@ -119,42 +132,43 @@ class ImageLoader:
         """
         return tf.reduce_sum(labels, axis=1)
 
-    def feature_generator(self):
-        """
-        Generator function for image features.
 
-        Yields:
-            tf.Tensor: Preprocessed image tensor.
-        """
+    def feature_label_generator(self):
         label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
-        for index, row in label_coordinates_df.iterrows():
-            study_id = row['study_id']
-            series_id = row['series_id']
-            instance_number = row['instance_number']
-            x = row['x']
-            y = row['y']
-            img, _, _ = self._preprocess_image(study_id, series_id, instance_number, x, y)
-            
-            # convert to RGB since many pretrained model use RGB
-            img = tf.image.grayscale_to_rgb(img) 
-            yield img
-
-    def label_generator(self):
-        """
-        Generator function for labels.
-
-        Yields:
-            np.array: One-hot encoded label vector.
-        """
         labels_df = pd.read_csv(self.label_coordinates_csv)
-        labels_df['label'] = labels_df.apply(lambda row: row['condition'].replace(' ', '_') + '_' + row['level'].replace(' ', '_'), axis=1)
-        self.label_list = labels_df['label'].unique().tolist()
-        for index, row in labels_df.iterrows():
-            study_id = row['study_id']
-            label = self.label_list.index(row['label'])
-            label_vector = [0.0] * 25
-            label_vector[label] = 1.0
-            yield np.array(label_vector, dtype=np.float32)
+
+        # Create a combined label column, this should match the header of the labels.csv file
+        labels_df['label'] = labels_df.apply(
+            lambda row: row['condition'].replace(' ', '_') + '_' + row['level'].replace(' ', '_'), axis=1
+        )
+
+        # Extract unique labels and store them from train.csv, we will match generated labels against this list
+        self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()
+
+        row = label_coordinates_df.sample(n=1) # randomly select one row from the dataframe to return
+        
+        study_id = row['study_id'].values[0]
+        series_id = row['series_id'].values[0]
+        condition = row['condition'].values[0]
+        level = row['level'].values[0]
+        x = row['x'].values[0]
+        y = row['y'].values[0]
+        
+        print(f"Going to generate feature for study_id: {study_id}, series_id: {series_id}, condition: {condition}, level: {level}")
+        img_tensor = self._preprocess_image(study_id, series_id)
+        
+        # Create a unique label for the combination of study_id, series_id, condition, and level
+        label = f"{row['condition'].values[0].replace(' ', '_').lower()}_{row['level'].values[0].replace('/', '_').lower()}"
+        try:
+            label_vector = self.label_list.index(label)
+        except ValueError:
+            raise ValueError(f"Label {label} not found in the label list")
+
+        # Create a one-hot encoded vector
+        one_hot_vector = [0.0] * len(self.label_list)
+        one_hot_vector[label_vector] = 1.0
+
+        yield img_tensor, np.array(one_hot_vector, dtype=np.float32)
 
     def create_dataset(self):
         """
@@ -163,17 +177,14 @@ class ImageLoader:
         Returns:
             tf.data.Dataset: Combined dataset of features and labels.
         """
-        feature_dataset = tf.data.Dataset.from_generator(
-            self.feature_generator,
-            output_signature=tf.TensorSpec(shape=(self.roi_size[0], self.roi_size[1], 3), dtype=tf.float32)
-        )
 
-        label_dataset = tf.data.Dataset.from_generator(
-            self.label_generator,
-            output_signature=tf.TensorSpec(shape=(25,), dtype=tf.float32)
+        dataset = tf.data.Dataset.from_generator(
+            self.feature_label_generator,
+            output_signature=(
+                tf.TensorSpec(shape=(192, self.roi_size[0], self.roi_size[1], 3), dtype=tf.float32),
+                tf.TensorSpec(shape=(25,), dtype=tf.float32)
+            )
         )
-
-        dataset = tf.data.Dataset.zip((feature_dataset, label_dataset))
         return dataset
 
     def _add_random_value(self, x, y):
@@ -203,47 +214,53 @@ class ImageLoader:
         """
         return x, y
 
-    def _filter_dataset(self, dataset, threshold, is_training=True):
+    def _filter_dataset(self, dataset, threshold, offset=0.0, is_training=True):
         """
         Filter dataset based on random value.
 
         Args:
             dataset (tf.data.Dataset): Input dataset.
             threshold (float): Threshold for splitting.
+            offset (float): Offset for splitting. Defaults to 0.0.
             is_training (bool): Flag to indicate if it's the training set.
 
         Returns:
             tf.data.Dataset: Filtered dataset.
         """
         if is_training:
-            return dataset.filter(lambda _, __, z: z >= threshold)
+            return dataset.filter(lambda _, __, z: z >= offset and z < offset + threshold)
         else:
-            return dataset.filter(lambda _, __, z: z < threshold)
+            return dataset.filter(lambda _, __, z: z < offset or z >= offset + threshold)
 
-    def _split_dataset(self, dataset, val_split=0.2):
+    def _split_dataset(self, dataset, val_split=0.2, test_split=0.1):
         """
-        Split a dataset into training and validation sets.
+        Split a dataset into training, validation, and test sets.
 
         Args:
             dataset (tf.data.Dataset): Input dataset.
             val_split (float): Fraction of data to use for validation.
+            test_split (float): Fraction of data to use for testing.
 
         Returns:
-            tuple: Training dataset and validation dataset.
+            tuple: Training dataset, validation dataset, and test dataset.
         """
         dataset_with_random = dataset.map(self._add_random_value)
 
         train_dataset = self._filter_dataset(
-            dataset_with_random, val_split, is_training=True
+            dataset_with_random, val_split + test_split, is_training=True
         )
         val_dataset = self._filter_dataset(
-            dataset_with_random, val_split, is_training=False
+            dataset_with_random, val_split, is_training=False, offset=val_split
+        )
+        test_dataset = self._filter_dataset(
+            dataset_with_random, test_split, is_training=False, offset=val_split + test_split
         )
 
         train_dataset = train_dataset.map(self._remove_random_value)
         val_dataset = val_dataset.map(self._remove_random_value)
+        test_dataset = test_dataset.map(self._remove_random_value)
 
-        return train_dataset, val_dataset
+        return train_dataset, val_dataset, test_dataset
 
     def load_data(self):
         """
@@ -256,20 +273,23 @@ class ImageLoader:
         # Create the dataset
         dataset = self.create_dataset()
         print("Splitting dataset")
-        train_dataset, val_dataset = self._split_dataset(dataset)
+        train_dataset, val_dataset, test_dataset = self._split_dataset(dataset)
 
         if self.batch_size:
             train_dataset = train_dataset.batch(self.batch_size)
             val_dataset = val_dataset.batch(self.batch_size)
+            test_dataset = test_dataset.batch(self.batch_size)
         else:
             train_dataset = train_dataset.batch(constants.BATCH_SIZE)
             val_dataset = val_dataset.batch(constants.BATCH_SIZE)
+            test_dataset = test_dataset.batch(constants.BATCH_SIZE)
 
         train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
         val_dataset = val_dataset.prefetch(tf.data.AUTOTUNE)
+        test_dataset = test_dataset.prefetch(tf.data.AUTOTUNE)
         print("Dataset created, you can now iterate over the dataset")
 
-        return train_dataset, val_dataset
+        return train_dataset, val_dataset, test_dataset
 
 # Usage example (commented out):
 # image_loader = ImageLoader(label_coordinates_csv='label_coordinates.csv', labels_csv='labels.csv',
