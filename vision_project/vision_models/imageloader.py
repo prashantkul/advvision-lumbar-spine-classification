@@ -7,6 +7,7 @@ import tensorflow as tf
 from tensorflow.data import Dataset
 from sklearn.preprocessing import MinMaxScaler, LabelEncoder
 import vision_models.constants as constants
+from typing import Any, Iterator, Tuple
 
 class ImageLoader:
     """
@@ -77,7 +78,9 @@ class ImageLoader:
         Yields:
             tuple: Preprocessed image tensor, study_id, series_id.
         """
+        print("Preprocessing images")
         series_dir = f"{self.image_dir}/{study_id}/{series_id}"
+        print(f"Reading images from {series_dir}")
         images = []
         for filename in os.listdir(series_dir):
             if filename.endswith(".dcm"):
@@ -93,7 +96,9 @@ class ImageLoader:
         # we precalculated that train_images/2508151528/1550325930 contains the largest number of
         # images in a series with 192 images. THe model expects tensors of the same size, so we pad
         # the images to 192. 
+        print(f"Number of images in series: {len(images)}")
         if len(images) < 192:
+            print(f"Padding tensor to 192 images")
             padding = tf.zeros((192 - len(images), *images[0].shape), dtype=tf.float32)
             images = tf.concat([images, padding], axis=0)
 
@@ -133,7 +138,7 @@ class ImageLoader:
         return tf.reduce_sum(labels, axis=1)
 
 
-    def feature_label_generator(self):
+    def feature_label_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
         label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
         labels_df = pd.read_csv(self.label_coordinates_csv)
 
@@ -145,30 +150,39 @@ class ImageLoader:
         # Extract unique labels and store them from train.csv, we will match generated labels against this list
         self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()
 
-        row = label_coordinates_df.sample(n=1) # randomly select one row from the dataframe to return
-        
-        study_id = row['study_id'].values[0]
-        series_id = row['series_id'].values[0]
-        condition = row['condition'].values[0]
-        level = row['level'].values[0]
-        x = row['x'].values[0]
-        y = row['y'].values[0]
-        
-        print(f"Going to generate feature for study_id: {study_id}, series_id: {series_id}, condition: {condition}, level: {level}")
-        img_tensor = self._preprocess_image(study_id, series_id)
-        
-        # Create a unique label for the combination of study_id, series_id, condition, and level
-        label = f"{row['condition'].values[0].replace(' ', '_').lower()}_{row['level'].values[0].replace('/', '_').lower()}"
-        try:
-            label_vector = self.label_list.index(label)
-        except ValueError:
-            raise ValueError(f"Label {label} not found in the label list")
+        # shuffle the dataframe
+        #label_coordinates_df = label_coordinates_df.sample(frac=1).reset_index(drop=True)
 
-        # Create a one-hot encoded vector
-        one_hot_vector = [0.0] * len(self.label_list)
-        one_hot_vector[label_vector] = 1.0
-
-        yield img_tensor, np.array(one_hot_vector, dtype=np.float32)
+        if len(label_coordinates_df) == 0:
+            raise ValueError("All study_id's have been exhausted.")
+        
+        while len(label_coordinates_df) > 0:
+            print("*"*100)
+            row = label_coordinates_df.sample(n=1) # randomly select one row from the dataframe to return
+            
+            study_id = row['study_id'].values[0]
+            series_id = row['series_id'].values[0]
+            condition = row['condition'].values[0]
+            level = row['level'].values[0]
+            x = row['x'].values[0]
+            y = row['y'].values[0]
+            
+            print(f"Feteching data for study_id: {study_id}, batch size: {self.batch_size}")
+            print(f"Going to generate feature for study_id: {study_id}, series_id: {series_id}, condition: {condition}, level: {level}")
+            img_tensor = self._preprocess_image(study_id, series_id)
+            print(f"Feature tensor generated, size: {img_tensor.shape}, now generating label")
+            # Create a unique label for the combination of study_id, series_id, condition, and level
+            label = f"{row['condition'].values[0].replace(' ', '_').lower()}_{row['level'].values[0].replace('/', '_').lower()}"
+            try:
+                label_vector = self.label_list.index(label)
+            except ValueError:
+                raise ValueError(f"Label {label} not found in the label list")
+            print(f"Label generated")
+            # Create a one-hot encoded vector
+            one_hot_vector = [0.0] * len(self.label_list)
+            one_hot_vector[label_vector] = 1.0
+            print("Returning feature and label tensors")
+            yield img_tensor, np.array(one_hot_vector, dtype=np.float32)
 
     def create_dataset(self):
         """
@@ -187,81 +201,6 @@ class ImageLoader:
         )
         return dataset
 
-    def _add_random_value(self, x, y):
-        """
-        Add a random value to each dataset element for splitting.
-
-        Args:
-            x (tf.Tensor): Feature tensor.
-            y (tf.Tensor): Label tensor.
-
-        Returns:
-            tuple: Feature tensor, label tensor, and random value.
-        """
-        return x, y, tf.random.uniform(shape=[], minval=0, maxval=1, dtype=tf.float32)
-
-    def _remove_random_value(self, x, y, _):
-        """
-        Remove the random value from dataset elements.
-
-        Args:
-            x (tf.Tensor): Feature tensor.
-            y (tf.Tensor): Label tensor.
-            _ (tf.Tensor): Random value to be removed.
-
-        Returns:
-            tuple: Feature tensor and label tensor.
-        """
-        return x, y
-
-    def _filter_dataset(self, dataset, threshold, offset=0.0, is_training=True):
-        """
-        Filter dataset based on random value.
-
-        Args:
-            dataset (tf.data.Dataset): Input dataset.
-            threshold (float): Threshold for splitting.
-            offset (float): Offset for splitting. Defaults to 0.0.
-            is_training (bool): Flag to indicate if it's the training set.
-
-        Returns:
-            tf.data.Dataset: Filtered dataset.
-        """
-        if is_training:
-            return dataset.filter(lambda _, __, z: z >= offset and z < offset + threshold)
-        else:
-            return dataset.filter(lambda _, __, z: z < offset or z >= offset + threshold)
-
-    def _split_dataset(self, dataset, val_split=0.2, test_split=0.1):
-        """
-        Split a dataset into training, validation, and test sets.
-
-        Args:
-            dataset (tf.data.Dataset): Input dataset.
-            val_split (float): Fraction of data to use for validation.
-            test_split (float): Fraction of data to use for testing.
-
-        Returns:
-            tuple: Training dataset, validation dataset, and test dataset.
-        """
-        dataset_with_random = dataset.map(self._add_random_value)
-
-        train_dataset = self._filter_dataset(
-            dataset_with_random, val_split + test_split, is_training=True
-        )
-        val_dataset = self._filter_dataset(
-            dataset_with_random, val_split, is_training=False, offset=val_split
-        )
-        test_dataset = self._filter_dataset(
-            dataset_with_random, test_split, is_training=False, offset=val_split + test_split
-        )
-
-        train_dataset = train_dataset.map(self._remove_random_value)
-        val_dataset = val_dataset.map(self._remove_random_value)
-        test_dataset = test_dataset.map(self._remove_random_value)
-
-        return train_dataset, val_dataset, test_dataset
-
     def load_data(self):
         """
         Load and prepare the data for training and validation.
@@ -272,24 +211,19 @@ class ImageLoader:
         """
         # Create the dataset
         dataset = self.create_dataset()
-        print("Splitting dataset")
-        train_dataset, val_dataset, test_dataset = self._split_dataset(dataset)
+        print("Dataset is created, setting batch size")
 
         if self.batch_size:
-            train_dataset = train_dataset.batch(self.batch_size)
-            val_dataset = val_dataset.batch(self.batch_size)
-            test_dataset = test_dataset.batch(self.batch_size)
+            print("Batching dataset to :", self.batch_size)
+            dataset = dataset.batch(self.batch_size)
+            
         else:
-            train_dataset = train_dataset.batch(constants.BATCH_SIZE)
-            val_dataset = val_dataset.batch(constants.BATCH_SIZE)
-            test_dataset = test_dataset.batch(constants.BATCH_SIZE)
+            print("Batching dataset to default defined in constants:", constants.BATCH_SIZE)
+            dataset = dataset.batch(constants.BATCH_SIZE)
 
-        train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
-        val_dataset = val_dataset.prefetch(tf.data.AUTOTUNE)
-        test_dataset = test_dataset.prefetch(tf.data.AUTOTUNE)
         print("Dataset created, you can now iterate over the dataset")
 
-        return train_dataset, val_dataset, test_dataset
+        return dataset
 
 # Usage example (commented out):
 # image_loader = ImageLoader(label_coordinates_csv='label_coordinates.csv', labels_csv='labels.csv',

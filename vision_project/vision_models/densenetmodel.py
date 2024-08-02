@@ -16,7 +16,8 @@ class ModelTrainer:
             optimizer=Adam(),  # Using Adam optimizer with default settings
             loss="binary_crossentropy",
             metrics=["binary_accuracy",                 
-                     tf.keras.metrics.AUC(multi_label=True, num_labels=self.model.num_classes)
+                     tf.keras.metrics.AUC(multi_label=True, num_labels=self.model.num_classes),
+                     "val_loss", "val_binary_accuracy", "val_auc"
                     ],
         )
 
@@ -66,60 +67,70 @@ class ModelTrainer:
 class DenseNetVisionModel(tf.keras.Model):
     def __init__(self, num_classes, input_shape, weights='imagenet'):
         super(DenseNetVisionModel, self).__init__()
+        print(f"Input shape received to the init method: {input_shape}")
         self.num_classes = num_classes
-        self.input_shape = input_shape[2:]  # (224, 224, 3)
-        print(f"Input shape: {self.input_shape}")
+        
+        if len(input_shape) == 5:  # (batch, 192, 224, 224, 3)
+            self.input_shape = input_shape[1:]  # (192, 224, 224, 3)
+        elif len(input_shape) == 4:  # (192, 224, 224, 3)
+            self.input_shape = input_shape
+        else:
+            raise ValueError(f"Unexpected input shape: {input_shape}")
+        
+        self.slices = self.input_shape[0]
+        self.image_shape = self.input_shape[1:]
+        
+        print(f"Input shape for base model: {self.image_shape}")
 
-        self.base_model = DenseNet121(
+        self.base_model = tf.keras.applications.DenseNet121(
             include_top=False, 
             weights=weights, 
-            input_shape=self.input_shape
+            input_shape=self.image_shape
         )
         self.base_model.trainable = False
-        self.global_average_layer = tf.keras.layers.GlobalAveragePooling2D()
-        self.prediction_layer = tf.keras.layers.Dense(num_classes, activation='sigmoid')
 
-    def call(self, inputs):
-        print(f"Input shape in call: {inputs.shape}")
-        # Reshape to (batch_size * 192, 224, 224, 3)
-        batch_size, num_images = inputs.shape[0], inputs.shape[1]
-        x = tf.reshape(inputs, (-1,) + self.input_shape)
-        print(f"Shape after reshape: {x.shape}")
+        self.global_average_layer = tf.keras.layers.GlobalAveragePooling2D()
         
-        x = self.base_model(x)
-        print(f"Shape after base_model: {x.shape}")
-        x = self.global_average_layer(x)
-        print(f"Shape after global_average_layer: {x.shape}")
-        
-        # Reshape back to (batch_size, 192, feature_dim)
-        x = tf.reshape(x, (batch_size, num_images, -1))
-        print(f"Shape after reshape back: {x.shape}")
-        
-        # Global average pooling over the 192 images
-        x = tf.reduce_mean(x, axis=1)
-        print(f"Shape after pooling over images: {x.shape}")
-        
-        x = self.prediction_layer(x)
-        print(f"Shape after prediction_layer: {x.shape}")
-        return x
+        # We'll create the prediction_layer in the build method
+        self.prediction_layer = None
 
     def build(self, input_shape):
+        # Call the base model on a sample input to get the output shape
+        sample_input = tf.keras.Input(shape=self.image_shape)
+        sample_output = self.base_model(sample_input)
+        sample_output = self.global_average_layer(sample_output)
+        
+        # Now we know the shape of the flattened features
+        feature_shape = sample_output.shape[-1]
+        
+        # Create the prediction layer with the known input shape
+        self.prediction_layer = tf.keras.layers.Dense(self.num_classes, activation='sigmoid')
+        # Build the prediction layer
+        self.prediction_layer.build((None, feature_shape))
+
         super(DenseNetVisionModel, self).build(input_shape)
-        self.built = True
 
-    def freeze_base_model(self):
-        self.base_model.trainable = False
+    def call(self, inputs, training=False):
+        # Get the shape of the input
+        batch_size = tf.shape(inputs)[0]
+        
+        # Reshape to (batch_size * slices, height, width, channels)
+        x = tf.reshape(inputs, [-1] + list(self.image_shape))
+        
+        x = self.base_model(x, training=training)
+        x = self.global_average_layer(x)
+        
+        # Reshape back to (batch_size, slices, features)
+        x = tf.reshape(x, [batch_size, self.slices, -1])
+        
+        # Global average pooling over the slices
+        x = tf.reduce_mean(x, axis=1)
+        
+        return self.prediction_layer(x)
 
-    def unfreeze_model(self, num_layers=20):
-        self.base_model.trainable = True
-        for layer in self.base_model.layers[:-num_layers]:
-            layer.trainable = False
-
-    def evaluate(self, validation_generator):
-        return super().evaluate(validation_generator)
-
-    def predict(self, test_generator):
-        return super().predict(test_generator)
+    def model(self):
+        x = tf.keras.Input(shape=self.input_shape)
+        return tf.keras.Model(inputs=[x], outputs=self.call(x, training=False))
 
 # Usage example:
 # input_shape = (None, 192, 224, 224, 3)  # None for batch size
@@ -128,5 +139,5 @@ class DenseNetVisionModel(tf.keras.Model):
 # model = DenseNetVisionModel(num_classes, input_shape, weights='imagenet')
 # trainer = ModelTrainer(model)
 
-# # Assuming you have your train_generator and validation_generator ready
+# # train the mode using:
 # # trainer.train(train_generator, validation_generator, epochs=10)

@@ -9,15 +9,16 @@ class VisionModelPipeline:
     def __init__(self):
         self.vutil = VisionUtils()
         self.strategy = self._get_strategy()
+        self.batch_size = 4
         with self.strategy.scope():
             self.image_loader = ImageLoader(
                 label_coordinates_csv=constants.TRAIN_LABEL_CORD_PATH,
                 labels_csv=constants.TRAIN_LABEL_PATH,
                 image_dir=constants.TRAIN_DATA_PATH,
                 roi_size=(224, 224),
-                batch_size=32
+                batch_size=self.batch_size
             )
-            self.input_shape = (224, 224, 3)
+            self.input_shape = (self.batch_size, 192, 224, 224, 3)  # Updated to include the slice dimension
             self.num_classes = 25
             self.weights = 'imagenet'
             self.epochs = 5
@@ -36,7 +37,7 @@ class VisionModelPipeline:
 
     def setup_environment(self):
         print("*" * 50)
-        print("   Environment    \n")
+        print("Environment:    \n")
         self.vutil.set_seed()
         self.vutil.print_python_version()
         self.vutil.print_tf_version()
@@ -45,19 +46,20 @@ class VisionModelPipeline:
 
     def load_data(self):
         print("Creating datasets...")
-        train_dataset, val_dataset = self.image_loader.load_data()
-        print("Printing dataset info...")
-        for img, labels in train_dataset.take(1):
-            print(img.shape)
-            print(labels.shape)
+        train_dataset = self.image_loader.load_data()
+        val_dataset = self.image_loader.load_data()
+        
         return train_dataset, val_dataset
 
     def build_model(self):
         with self.strategy.scope():
             model = DenseNetVisionModel(num_classes=self.num_classes, input_shape=self.input_shape, weights=self.weights)
-            model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+            model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+            
+           # Build the model with a sample input
             sample_input = tf.keras.Input(shape=self.input_shape)
-            model(sample_input)  # Build the model with a sample input
+            model(sample_input)
+            
         return model
 
     def train_model(self, model, train_dataset, val_dataset):

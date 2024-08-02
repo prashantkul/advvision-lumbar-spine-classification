@@ -18,6 +18,7 @@ class VisionUtils:
       print("Tensorflow version: " + tf.__version__)
 
    def print_tf_gpu_support(self):
+      print("Checking GPU support")
       print(tf.config.list_physical_devices('GPU'))
 
    def print_dataset_info(self, dataset, print_labels):
