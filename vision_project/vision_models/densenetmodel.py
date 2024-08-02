@@ -14,7 +14,7 @@ class ModelTrainer:
         # Separate method for model compilation
         self.model.compile(
             optimizer=Adam(),  # Using Adam optimizer with default settings
-            loss="categorical_crossentropy",
+            loss="binary_crossentropy",
             metrics=["categorical_accuracy"],
         )
 
@@ -75,7 +75,7 @@ class DenseNetVisionModel(tf.keras.Model):
         )
         self.base_model.trainable = False
         self.global_average_layer = tf.keras.layers.GlobalAveragePooling2D()
-        self.prediction_layer = tf.keras.layers.Dense(num_classes, activation='softmax')
+        self.prediction_layer = tf.keras.layers.Dense(num_classes, activation='sigmoid')
 
     def call(self, inputs):
         print(f"Input shape in call: {inputs.shape}")
