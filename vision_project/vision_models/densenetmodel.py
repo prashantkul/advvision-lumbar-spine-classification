@@ -15,7 +15,9 @@ class ModelTrainer:
         self.model.compile(
             optimizer=Adam(),  # Using Adam optimizer with default settings
             loss="binary_crossentropy",
-            metrics=["categorical_accuracy"],
+            metrics=["binary_accuracy",                 
+                     tf.keras.metrics.AUC(multi_label=True, num_labels=self.model.num_classes)
+                    ],
         )
 
     def train(
