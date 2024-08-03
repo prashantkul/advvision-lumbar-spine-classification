@@ -21,7 +21,6 @@ import vision_models.constants as constants
 from vision_models.imageloader import ImageLoader
 from vision_models.densenetmodel import DenseNetVisionModel, ModelTrainer
 
-
 # Usage example:
 input_shape = (None, 192, 224, 224, 3)  # None for batch size
 num_classes = 25
