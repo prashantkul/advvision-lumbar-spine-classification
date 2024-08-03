@@ -44,6 +44,7 @@ class ImageLoader:
 
         # Load label data
         self.label_df = self._load_labels_df()
+        self.label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
 
         # Split the data into train, val, test
         self.train_ids, self.val_ids, self.test_ids = self.split_dataset()
@@ -191,53 +192,111 @@ class ImageLoader:
 
         return train_ids, val_ids, test_ids
 
-    def feature_label_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
-        label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
-        # labels_df = pd.read_csv(self.label_coordinates_csv)
+    # def feature_label_generator(self, split) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
+    #     label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
 
-        # Create a combined label column, this should match the header of the labels.csv file
-        label_coordinates_df['label'] = label_coordinates_df.apply(
-            lambda row: row['condition'].replace(' ', '_') + '_' + row['level'].replace(' ', '_'), axis=1
-        )
+    #     # Filter based on split
+    #     if split == 'train':
+    #         split_ids = self.train_ids
+    #     elif split == 'val':
+    #         split_ids = self.val_ids
+    #     elif split == 'test':
+    #         split_ids = self.test_ids
+    #     else:
+    #         raise ValueError(f"Unknown split: {split}")
 
-        # Extract unique labels and store them from train.csv, we will match generated labels against this list
-        self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()
+    #     label_coordinates_df = label_coordinates_df[label_coordinates_df['study_id'].isin(split_ids)]
 
-        # shuffle the dataframe
-        label_coordinates_df = label_coordinates_df.sample(frac=1).reset_index(drop=True)
+    #     # Create a combined label column, this should match the header of the labels.csv file
+    #     label_coordinates_df['label'] = label_coordinates_df.apply(
+    #         lambda row: row['condition'].replace(' ', '_') + '_' + row['level'].replace(' ', '_'), axis=1
+    #     )
 
-        if len(label_coordinates_df) == 0:
-            raise ValueError("All study_id's have been exhausted.")
+    #     # Extract unique labels and store them from train.csv, we will match generated labels against this list
+    #     if self.label_list is None:
+    #         self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()
+
+    #     # Shuffle the dataframe
+    #     label_coordinates_df = label_coordinates_df.sample(frac=1).reset_index(drop=True)
+
+    #     if len(label_coordinates_df) == 0:
+    #         raise ValueError("All study_id's have been exhausted.")
         
-        while len(label_coordinates_df) > 0:
-            print("*"*100)
-            row = label_coordinates_df.sample(n=1) # randomly select one row from the dataframe to return
+    #     while len(label_coordinates_df) > 0:
+    #         print("*" * 100)
+    #         row = label_coordinates_df.sample(n=1) # randomly select one row from the dataframe to return
             
-            study_id = row['study_id'].values[0]
-            series_id = row['series_id'].values[0]
-            condition = row['condition'].values[0]
-            level = row['level'].values[0]
-            x = row['x'].values[0]
-            y = row['y'].values[0]
+    #         study_id = row['study_id'].values[0]
+    #         series_id = row['series_id'].values[0]
+    #         condition = row['condition'].values[0]
+    #         level = row['level'].values[0]
+    #         x = row['x'].values[0]
+    #         y = row['y'].values[0]
             
-            print(f"Feteching data for study_id: {study_id}, batch size: {self.batch_size}")
-            print(f"Going to generate feature for study_id: {study_id}, series_id: {series_id}, condition: {condition}, level: {level}")
-            img_tensor = self._preprocess_image(study_id, series_id)
-            print(f"Feature tensor generated, size: {img_tensor.shape}, now generating label")
-            # Create a unique label for the combination of study_id, series_id, condition, and level
-            label = f"{row['condition'].values[0].replace(' ', '_').lower()}_{row['level'].values[0].replace('/', '_').lower()}"
-            try:
-                label_vector = self.label_list.index(label)
-            except ValueError:
-                raise ValueError(f"Label {label} not found in the label list")
-            print(f"Label generated")
-            # Create a one-hot encoded vector
-            one_hot_vector = [0.0] * len(self.label_list)
-            one_hot_vector[label_vector] = 1.0
-            print("Returning feature and label tensors")
-            yield img_tensor, np.array(one_hot_vector, dtype=np.float32)
+    #         print(f"Fetching data for study_id: {study_id}, batch size: {self.batch_size}")
+    #         print(f"Going to generate feature for study_id: {study_id}, series_id: {series_id}, condition: {condition}, level: {level}")
+    #         img_tensor = self._preprocess_image(study_id, series_id)
+    #         print(f"Feature tensor generated, size: {img_tensor.shape}, now generating label")
+    #         # Create a unique label for the combination of study_id, series_id, condition, and level
+    #         label = f"{row['condition'].values[0].replace(' ', '_').lower()}_{row['level'].values[0].replace('/', '_').lower()}"
+    #         try:
+    #             label_vector = self.label_list.index(label)
+    #         except ValueError:
+    #             raise ValueError(f"Label {label} not found in the label list")
+    #         print(f"Label generated")
+    #         # Create a one-hot encoded vector
+    #         one_hot_vector = [0.0] * len(self.label_list)
+    #         one_hot_vector[label_vector] = 1.0
+    #         print("Returning feature and label tensors")
+    #         yield img_tensor, np.array(one_hot_vector, dtype=np.float32)
 
-    def create_dataset(self):
+    def feature_label_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
+            label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
+
+            # Create a combined label column, this should match the header of the labels.csv file
+            label_coordinates_df['label'] = label_coordinates_df.apply(
+                lambda row: row['condition'].replace(' ', '_') + '_' + row['level'].replace(' ', '_'), axis=1
+            )
+
+            # Extract unique labels and store them from train.csv, we will match generated labels against this list
+            self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()
+
+            # shuffle the dataframe
+            label_coordinates_df = label_coordinates_df.sample(frac=1).reset_index(drop=True)
+
+            if len(label_coordinates_df) == 0:
+                raise ValueError("All study_id's have been exhausted.")
+            
+            while len(label_coordinates_df) > 0:
+                print("*"*100)
+                row = label_coordinates_df.sample(n=1) # randomly select one row from the dataframe to return
+                
+                study_id = row['study_id'].values[0]
+                series_id = row['series_id'].values[0]
+                condition = row['condition'].values[0]
+                level = row['level'].values[0]
+                x = row['x'].values[0]
+                y = row['y'].values[0]
+                
+                print(f"Fetching data for study_id: {study_id}, batch size: {self.batch_size}")
+                print(f"Going to generate feature for study_id: {study_id}, series_id: {series_id}, condition: {condition}, level: {level}")
+                img_tensor = self._preprocess_image(study_id, series_id)
+                print(f"Feature tensor generated, size: {img_tensor.shape}, now generating label")
+                # Create a unique label for the combination of study_id, series_id, condition, and level
+                label = f"{row['condition'].values[0].replace(' ', '_').lower()}_{row['level'].values[0].replace('/', '_').lower()}"
+                try:
+                    label_vector = self.label_list.index(label)
+                except ValueError:
+                    raise ValueError(f"Label {label} not found in the label list")
+                print(f"Label generated")
+                # Create a one-hot encoded vector
+                one_hot_vector = [0.0] * len(self.label_list)
+                one_hot_vector[label_vector] = 1.0
+                print("Returning feature and label tensors")
+                yield img_tensor, np.array(one_hot_vector, dtype=np.float32)
+
+
+    def create_dataset(self, split):
         """
         Create a TensorFlow dataset from feature and label generators.
 
@@ -245,13 +304,29 @@ class ImageLoader:
             tf.data.Dataset: Combined dataset of features and labels.
         """
 
+        # dataset = tf.data.Dataset.from_generator(
+        #     self.feature_label_generator,
+        #     output_signature=(
+        #         tf.TensorSpec(shape=(192, self.roi_size[0], self.roi_size[1], 3), dtype=tf.float32),
+        #         tf.TensorSpec(shape=(25,), dtype=tf.float32)
+        #     )
+        # )
+        # return dataset
+
         dataset = tf.data.Dataset.from_generator(
+            # lambda: self.feature_label_generator(split),
             self.feature_label_generator,
             output_signature=(
                 tf.TensorSpec(shape=(192, self.roi_size[0], self.roi_size[1], 3), dtype=tf.float32),
                 tf.TensorSpec(shape=(25,), dtype=tf.float32)
             )
         )
+
+        if self.batch_size:
+            dataset = dataset.batch(self.batch_size)
+        else:
+            dataset = dataset.batch(constants.BATCH_SIZE)
+
         return dataset
 
     def load_data(self, split):
@@ -262,19 +337,18 @@ class ImageLoader:
             tuple: Training dataset and validation dataset.
             Each dataset will have image and label tensors.
         """
-        # # Create the dataset
-        # dataset = self.create_dataset()
-        # print("Dataset is created, setting batch size")
+        # # # Create the dataset
+        # dataset = self.create_dataset(split)
+        # print(f"Dataset for {split} is created, setting batch size")
 
         # if self.batch_size:
-        #     print("Batching dataset to :", self.batch_size)
+        #     print(f"Batching dataset to: {self.batch_size}")
         #     dataset = dataset.batch(self.batch_size)
-            
         # else:
-        #     print("Batching dataset to default defined in constants:", constants.BATCH_SIZE)
+        #     print(f"Batching dataset to default defined in constants: {constants.BATCH_SIZE}")
         #     dataset = dataset.batch(constants.BATCH_SIZE)
 
-        # print("Dataset created, you can now iterate over the dataset")
+        # print(f"Dataset for {split} created, you can now iterate over the dataset")
 
         # return dataset
         
@@ -310,17 +384,61 @@ class ImageLoader:
         """
         Analyze the split of the dataset.
         """
-        self.label_df['split'] = pd.cut(
-            self.label_df.index,
-            bins=[0, int(constants.TRAIN_DATASET * len(self.label_df)), 
-                int((constants.TRAIN_DATASET + constants.VAL_DATASET) * len(self.label_df)), 
-                len(self.label_df)],
-            labels=['train', 'val', 'test']
+        # self.label_df['split'] = pd.cut(
+        #     self.label_df.index,
+        #     bins=[0, int(constants.TRAIN_DATASET * len(self.label_df)), 
+        #         int((constants.TRAIN_DATASET + constants.VAL_DATASET) * len(self.label_df)), 
+        #         len(self.label_df)],
+        #     labels=['train', 'val', 'test']
+        # )
+
+        # split_counts = self.label_df['split'].value_counts()
+        # print(f"Number of unique study_ids in each split:\n{self.label_df.groupby('split')['study_id'].nunique()}")
+        # print(f"\nNumber of images in each split:\n{split_counts}")
+
+        # label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
+
+        # label_coordinates_df['split'] = label_coordinates_df['study_id'].apply(
+        #     lambda study_id: 'train' if study_id in self.train_ids else 'val' if study_id in self.val_ids else 'test'
+        # )
+
+        # split_counts = label_coordinates_df['split'].value_counts()
+        # unique_studies_per_split = label_coordinates_df.groupby('split')['study_id'].nunique()
+
+        # print(f"Number of unique study_ids in each split:\n{unique_studies_per_split}")
+        # print(f"\nNumber of instances in each split:\n{split_counts}")
+
+        # return unique_studies_per_split, split_counts
+
+        self.label_coordinates_df['split'] = self.label_coordinates_df['study_id'].apply(
+            lambda study_id: 'train' if study_id in self.train_ids else 'val' if study_id in self.val_ids else 'test'
         )
 
-        split_counts = self.label_df['split'].value_counts()
-        print(f"Number of unique study_ids in each split:\n{self.label_df.groupby('split')['study_id'].nunique()}")
-        print(f"\nNumber of images in each split:\n{split_counts}")
+        split_counts = self.label_coordinates_df['split'].value_counts()
+        unique_studies_per_split = self.label_coordinates_df.groupby('split')['study_id'].nunique()
+
+        print(f"Number of unique study_ids in each split:\n{unique_studies_per_split}")
+        print(f"\nNumber of instances in each split:\n{split_counts}")
+
+        # Show the first 5 rows of the label_coordinates_df with the split column
+        print("\nFirst 5 rows of the label_coordinates_df with the split column:")
+        print(self.label_coordinates_df.head())
+
+        # Show the first 5 rows of the label_coordinates_df with the split column
+        print("\nFirst 5 rows of the label_df with the split column:")
+        print(self.label_df.head())
+
+        return unique_studies_per_split, split_counts
+    
+    def save_split_labels(self, filename='label_coordinates_with_split.csv'):
+        """
+        Save the label_coordinates_df with the split column to a CSV file.
+
+        Args:
+            filename (str): The name of the file to save the DataFrame to.
+        """
+        self.label_coordinates_df.to_csv(filename, index=False)
+        print(f"Saved the DataFrame with the split column to {filename}")
 
 
 # Usage example (commented out):
