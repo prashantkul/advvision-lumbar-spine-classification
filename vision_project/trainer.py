@@ -46,9 +46,9 @@ class VisionModelPipeline:
 
     def load_data(self):
         print("Creating datasets...")
-        train_dataset = self.image_loader.load_data()
-        val_dataset = self.image_loader.load_data()
-        
+        # train_dataset = self.image_loader.load_data()
+        # val_dataset = self.image_loader.load_data()
+        train_dataset, val_dataset, _ = self.image_loader.split_dataset()
         return train_dataset, val_dataset
 
     def build_model(self):

@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
+import random
 import pydicom
 import cv2
 import tensorflow as tf
@@ -37,6 +38,26 @@ class ImageLoader:
         self.roi_size = roi_size
         self.batch_size = batch_size
 
+        # Set the random seed for reproducibility
+        self.random_seed = constants.RANDOM_SEED
+        self._set_random_seed(self.random_seed)
+
+        # Load label data
+        self.label_df = self._load_labels_df()
+
+        # Split the data into train, val, test
+        self.train_ids, self.val_ids, self.test_ids = self.split_dataset()
+
+    def _set_random_seed(self, seed):
+        """Set the random seed for reproducibility."""
+        np.random.seed(seed)
+        random.seed(seed)
+        tf.random.set_seed(seed)
+
+    def _load_labels_df(self):
+        """Load the label dataframe from the CSV file."""
+        return pd.read_csv(self.labels_csv)
+    
     def _load_labels(self):
         """
         Load labels from CSV file into a dictionary.
@@ -137,13 +158,45 @@ class ImageLoader:
         """
         return tf.reduce_sum(labels, axis=1)
 
+    def split_dataset(self):
+        """
+        Split the data into train, validation, and test sets.
+        """
+        # self._set_random_seed(self.random_seed)  # Set the random seed
+
+        # train_size = int(constants.TRAIN_DATASET * len(self.label_df))
+        # val_size = int(constants.VAL_DATASET * len(self.label_df))
+        # test_size = int(constants.TEST_DATASET * len(self.label_df))
+
+        # dataset = self.create_dataset()
+        # dataset = dataset.shuffle(buffer_size=len(self.label_df), seed=self.random_seed)
+
+        # train_dataset = dataset.take(train_size)
+        # val_dataset = dataset.skip(train_size).take(val_size)
+        # test_dataset = dataset.skip(train_size + val_size).take(test_size)
+
+        # return train_dataset, val_dataset, test_dataset
+
+        self._set_random_seed(self.random_seed)  # Set the random seed
+
+        unique_ids = self.label_df['study_id'].unique()
+        np.random.shuffle(unique_ids)
+
+        train_end = int(constants.TRAIN_DATASET * len(unique_ids))
+        val_end = train_end + int(constants.VAL_DATASET * len(unique_ids))
+
+        train_ids = unique_ids[:train_end]
+        val_ids = unique_ids[train_end:val_end]
+        test_ids = unique_ids[val_end:]
+
+        return train_ids, val_ids, test_ids
 
     def feature_label_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
         label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
-        labels_df = pd.read_csv(self.label_coordinates_csv)
+        # labels_df = pd.read_csv(self.label_coordinates_csv)
 
         # Create a combined label column, this should match the header of the labels.csv file
-        labels_df['label'] = labels_df.apply(
+        label_coordinates_df['label'] = label_coordinates_df.apply(
             lambda row: row['condition'].replace(' ', '_') + '_' + row['level'].replace(' ', '_'), axis=1
         )
 
@@ -151,7 +204,7 @@ class ImageLoader:
         self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()
 
         # shuffle the dataframe
-        #label_coordinates_df = label_coordinates_df.sample(frac=1).reset_index(drop=True)
+        label_coordinates_df = label_coordinates_df.sample(frac=1).reset_index(drop=True)
 
         if len(label_coordinates_df) == 0:
             raise ValueError("All study_id's have been exhausted.")
@@ -201,7 +254,7 @@ class ImageLoader:
         )
         return dataset
 
-    def load_data(self):
+    def load_data(self, split):
         """
         Load and prepare the data for training and validation.
 
@@ -209,21 +262,66 @@ class ImageLoader:
             tuple: Training dataset and validation dataset.
             Each dataset will have image and label tensors.
         """
+        # # Create the dataset
+        # dataset = self.create_dataset()
+        # print("Dataset is created, setting batch size")
+
+        # if self.batch_size:
+        #     print("Batching dataset to :", self.batch_size)
+        #     dataset = dataset.batch(self.batch_size)
+            
+        # else:
+        #     print("Batching dataset to default defined in constants:", constants.BATCH_SIZE)
+        #     dataset = dataset.batch(constants.BATCH_SIZE)
+
+        # print("Dataset created, you can now iterate over the dataset")
+
+        # return dataset
+        
+        # Filter the label dataframe based on the split
+        if split == 'train':
+            split_ids = self.train_ids
+        elif split == 'val':
+            split_ids = self.val_ids
+        elif split == 'test':
+            split_ids = self.test_ids
+        else:
+            raise ValueError(f"Unknown split: {split}")
+
+        # Filter the label dataframe based on the split_ids
+        self.label_df = self.label_df[self.label_df['study_id'].isin(split_ids)]
+
         # Create the dataset
         dataset = self.create_dataset()
-        print("Dataset is created, setting batch size")
+        print(f"Dataset for {split} is created, setting batch size")
 
         if self.batch_size:
-            print("Batching dataset to :", self.batch_size)
+            print(f"Batching dataset to: {self.batch_size}")
             dataset = dataset.batch(self.batch_size)
-            
         else:
-            print("Batching dataset to default defined in constants:", constants.BATCH_SIZE)
+            print(f"Batching dataset to default defined in constants: {constants.BATCH_SIZE}")
             dataset = dataset.batch(constants.BATCH_SIZE)
 
-        print("Dataset created, you can now iterate over the dataset")
+        print(f"Dataset for {split} created, you can now iterate over the dataset")
 
         return dataset
+
+    def analyze_split(self):
+        """
+        Analyze the split of the dataset.
+        """
+        self.label_df['split'] = pd.cut(
+            self.label_df.index,
+            bins=[0, int(constants.TRAIN_DATASET * len(self.label_df)), 
+                int((constants.TRAIN_DATASET + constants.VAL_DATASET) * len(self.label_df)), 
+                len(self.label_df)],
+            labels=['train', 'val', 'test']
+        )
+
+        split_counts = self.label_df['split'].value_counts()
+        print(f"Number of unique study_ids in each split:\n{self.label_df.groupby('split')['study_id'].nunique()}")
+        print(f"\nNumber of images in each split:\n{split_counts}")
+
 
 # Usage example (commented out):
 # image_loader = ImageLoader(label_coordinates_csv='label_coordinates.csv', labels_csv='labels.csv',
