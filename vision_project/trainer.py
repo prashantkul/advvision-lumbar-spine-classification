@@ -9,7 +9,7 @@ class VisionModelPipeline:
     def __init__(self):
         self.vutil = VisionUtils()
         self.strategy = self._get_strategy()
-        self.batch_size = 4
+        self.batch_size = 1
         with self.strategy.scope():
             self.image_loader = ImageLoader(
                 label_coordinates_csv=constants.TRAIN_LABEL_CORD_PATH,
@@ -44,12 +44,11 @@ class VisionModelPipeline:
         self.vutil.print_tf_gpu_support()
         print("*" * 50)
 
-    def load_data(self):
+    def load_data(self, mode):
         print("Creating datasets...")
-        train_dataset = self.image_loader.load_data()
-        val_dataset = self.image_loader.load_data()
+        dataset = self.image_loader.load_data(mode)
         
-        return train_dataset, val_dataset
+        return dataset
 
     def build_model(self):
         with self.strategy.scope():
@@ -70,11 +69,16 @@ class VisionModelPipeline:
 
 def main():
     pipeline = VisionModelPipeline()
-    pipeline.setup_environment()
-    train_dataset, val_dataset = pipeline.load_data()
-    model = pipeline.build_model()
-    history = pipeline.train_model(model, train_dataset, val_dataset)
-    print(history)
+    #pipeline.setup_environment()
+    val_dataset = pipeline.load_data("val")
+    for img, labels in val_dataset.take(1):
+        print(img.shape)
+        print(labels.shape)
+        print(labels)
+        
+    #model = pipeline.build_model()
+    #history = pipeline.train_model(model, train_dataset, val_dataset)
+    # print(history)
 
 if __name__ == "__main__":
     main()

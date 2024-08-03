@@ -4,15 +4,14 @@ import numpy as np
 import pydicom
 import cv2
 import tensorflow as tf
-from tensorflow.data import Dataset
-from sklearn.preprocessing import MinMaxScaler, LabelEncoder
 import vision_models.constants as constants
 from typing import Any, Iterator, Tuple
+
 
 class ImageLoader:
     """
     A class for loading and preprocessing medical image data for machine learning tasks.
-    
+
     This class handles loading DICOM images, extracting relevant patches, and creating
     TensorFlow datasets for training and validation.
     """
@@ -36,6 +35,7 @@ class ImageLoader:
         self.study_id_to_labels = self._load_labels()
         self.roi_size = roi_size
         self.batch_size = batch_size
+        self.split = None
 
     def _load_labels(self):
         """
@@ -95,7 +95,7 @@ class ImageLoader:
         # Pad images to 192 if necessary, we're padding to max number of dicom images in a series
         # we precalculated that train_images/2508151528/1550325930 contains the largest number of
         # images in a series with 192 images. THe model expects tensors of the same size, so we pad
-        # the images to 192. 
+        # the images to 192.
         print(f"Number of images in series: {len(images)}")
         if len(images) < 192:
             print(f"Padding tensor to 192 images")
@@ -137,40 +137,113 @@ class ImageLoader:
         """
         return tf.reduce_sum(labels, axis=1)
 
+    def _create_split(self, df):
+        """
+        Create a split of the data based on the split column.
 
-    def feature_label_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
+        Args:
+            dataframe (pd.DataFrame): Input dataframe.
+
+        Returns:
+            tuple: Train and validation dataframes.
+        """
+        # given a dataframe, split it into train, test and validation dataframes
+        # USING TRAIN_SPLIT = 0.80 VAL_SPLIT = 0.10 TEST_SPLIT = 0.10
+        # Calculate split indices
+        train_end = int(len(df) * constants.TRAIN_SPLIT)
+        val_end = train_end + int(len(df) * constants.VAL_SPLIT)
+
+        # Shuffle the DataFrame
+        df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+
+        # Calculate split indices
+        train_end = int(len(df) * constants.TRAIN_SPLIT)
+        val_end = train_end + int(len(df) * constants.VAL_SPLIT)
+
+        # Initialize the 'split' column
+        df["split"] = None
+
+        # Assign split labels
+        df.loc[:train_end, "split"] = "train"
+        df.loc[train_end:val_end, "split"] = "val"
+        df.loc[val_end:, "split"] = "test"
+
+        return df
+
+    def _analyze_splits(self):
+        label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
+        # split the dataframe for train, test and validation
+        label_coordinates_df = self._create_split(label_coordinates_df)
+
+    def _create_human_readable_label(self, label_vector, labels_df):
+        # Convert label_vector to numpy array if it's not already
+        label_vector = np.array(label_vector)
+        # Remove the [0] indexing if label_vector is 1D
+        indices_with_ones = np.where(label_vector == 1)[0]
+        # Make sure labels_df has an index that matches the indices_with_ones
+        human_readable_labels = labels_df.iloc[indices_with_ones]["label"].tolist()
+        # Output the labels
+        print("Human-readable labels:", human_readable_labels)
+
+    def _feature_label_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
         label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
         labels_df = pd.read_csv(self.label_coordinates_csv)
 
         # Create a combined label column, this should match the header of the labels.csv file
-        labels_df['label'] = labels_df.apply(
-            lambda row: row['condition'].replace(' ', '_') + '_' + row['level'].replace(' ', '_'), axis=1
+        labels_df["label"] = labels_df.apply(
+            lambda row: (
+                row["condition"].replace(" ", "_")
+                + "_"
+                + row["level"].replace(" ", "_").replace("/", "_")
+            ).lower(),
+            axis=1,
         )
 
         # Extract unique labels and store them from train.csv, we will match generated labels against this list
         self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()
 
-        # shuffle the dataframe
-        #label_coordinates_df = label_coordinates_df.sample(frac=1).reset_index(drop=True)
+        # split the dataframe for train, test and validation
+        label_coordinates_df = self._create_split(label_coordinates_df)
 
-        if len(label_coordinates_df) == 0:
-            raise ValueError("All study_id's have been exhausted.")
-        
+        # This loop iterates until all the rows have beene exahused for the generator
         while len(label_coordinates_df) > 0:
-            print("*"*100)
-            row = label_coordinates_df.sample(n=1) # randomly select one row from the dataframe to return
-            
-            study_id = row['study_id'].values[0]
-            series_id = row['series_id'].values[0]
-            condition = row['condition'].values[0]
-            level = row['level'].values[0]
-            x = row['x'].values[0]
-            y = row['y'].values[0]
-            
-            print(f"Feteching data for study_id: {study_id}, batch size: {self.batch_size}")
-            print(f"Going to generate feature for study_id: {study_id}, series_id: {series_id}, condition: {condition}, level: {level}")
+            print("*" * 100)
+
+            # Filter the dataframe based on what split is asked for in the generator
+            if self.split == "train":
+                label_coordinates_df = label_coordinates_df[
+                    label_coordinates_df["split"] == "train"
+                ]
+            elif self.split == "val":
+                label_coordinates_df = label_coordinates_df[
+                    label_coordinates_df["split"] == "val"
+                ]
+            elif self.split == "test":
+                label_coordinates_df = label_coordinates_df[
+                    label_coordinates_df["split"] == "test"
+                ]
+
+            row = label_coordinates_df.sample(
+                n=1
+            )  # randomly select one row from the dataframe to return
+
+            study_id = row["study_id"].values[0]
+            series_id = row["series_id"].values[0]
+            condition = row["condition"].values[0]
+            level = row["level"].values[0]
+            x = row["x"].values[0]
+            y = row["y"].values[0]
+
+            print(
+                f"Going to generate feature for study_id: {study_id}, series_id: {series_id}, condition: {condition}, level: {level}"
+            )
+
+            # Preprocess the image before supplying to the generator.
+            # TBD: This is the place for Gaussian attention mask
             img_tensor = self._preprocess_image(study_id, series_id)
-            print(f"Feature tensor generated, size: {img_tensor.shape}, now generating label")
+            print(
+                f"Feature tensor generated, size: {img_tensor.shape}, now generating label"
+            )
             # Create a unique label for the combination of study_id, series_id, condition, and level
             label = f"{row['condition'].values[0].replace(' ', '_').lower()}_{row['level'].values[0].replace('/', '_').lower()}"
             try:
@@ -181,8 +254,13 @@ class ImageLoader:
             # Create a one-hot encoded vector
             one_hot_vector = [0.0] * len(self.label_list)
             one_hot_vector[label_vector] = 1.0
+
+            print(f"One hot vector generated: {one_hot_vector}")
+            self._create_human_readable_label(one_hot_vector, labels_df)
+
+            one_hot_vector_array = np.array(one_hot_vector, dtype=np.float32)
             print("Returning feature and label tensors")
-            yield img_tensor, np.array(one_hot_vector, dtype=np.float32)
+            yield img_tensor, one_hot_vector_array
 
     def create_dataset(self):
         """
@@ -193,15 +271,17 @@ class ImageLoader:
         """
 
         dataset = tf.data.Dataset.from_generator(
-            self.feature_label_generator,
+            self._feature_label_generator,
             output_signature=(
-                tf.TensorSpec(shape=(192, self.roi_size[0], self.roi_size[1], 3), dtype=tf.float32),
-                tf.TensorSpec(shape=(25,), dtype=tf.float32)
-            )
+                tf.TensorSpec(
+                    shape=(192, self.roi_size[0], self.roi_size[1], 3), dtype=tf.float32
+                ),
+                tf.TensorSpec(shape=(25,), dtype=tf.float32),
+            ),
         )
         return dataset
 
-    def load_data(self):
+    def load_data(self, split):
         """
         Load and prepare the data for training and validation.
 
@@ -209,6 +289,12 @@ class ImageLoader:
             tuple: Training dataset and validation dataset.
             Each dataset will have image and label tensors.
         """
+        # Filter the label dataframe based on the split
+        if split == "train" or split == "val" or split == "test":
+            self.split = split
+        else:
+            raise ValueError(f"Unknown split: {split}")
+
         # Create the dataset
         dataset = self.create_dataset()
         print("Dataset is created, setting batch size")
@@ -216,14 +302,18 @@ class ImageLoader:
         if self.batch_size:
             print("Batching dataset to :", self.batch_size)
             dataset = dataset.batch(self.batch_size)
-            
+
         else:
-            print("Batching dataset to default defined in constants:", constants.BATCH_SIZE)
+            print(
+                "Batching dataset to default defined in constants:",
+                constants.BATCH_SIZE,
+            )
             dataset = dataset.batch(constants.BATCH_SIZE)
 
         print("Dataset created, you can now iterate over the dataset")
 
         return dataset
+
 
 # Usage example (commented out):
 # image_loader = ImageLoader(label_coordinates_csv='label_coordinates.csv', labels_csv='labels.csv',
