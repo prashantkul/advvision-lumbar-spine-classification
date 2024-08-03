@@ -9,7 +9,7 @@ class VisionModelPipeline:
     def __init__(self):
         self.vutil = VisionUtils()
         self.strategy = self._get_strategy()
-        self.batch_size = 4
+        self.batch_size = 1
         with self.strategy.scope():
             self.image_loader = ImageLoader(
                 label_coordinates_csv=constants.TRAIN_LABEL_CORD_PATH,
