@@ -44,9 +44,9 @@ class VisionModelPipeline:
         self.vutil.print_tf_gpu_support()
         print("*" * 50)
 
-    def load_data(self, mode):
+    def load_data(self, mode, study_ids: list[str] = None):
         print("Creating datasets...")
-        dataset = self.image_loader.load_data(mode)
+        dataset = self.image_loader.load_data(mode, study_ids)
         
         return dataset
 
@@ -70,8 +70,10 @@ class VisionModelPipeline:
 def main():
     pipeline = VisionModelPipeline()
     #pipeline.setup_environment()
-    val_dataset = pipeline.load_data("val")
-    for img, labels in val_dataset.take(1):
+    study_ids = ['4003253','8785691', '7143189','4646740']
+    train_dataset = pipeline.load_data("train", study_ids)
+    #val_dataset = pipeline.load_data("val")
+    for img, labels in train_dataset.take(1):
         print(img.shape)
         print(labels.shape)
         print(labels)

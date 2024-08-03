@@ -36,7 +36,8 @@ class ImageLoader:
         self.roi_size = roi_size
         self.batch_size = batch_size
         self.split = None
-
+        self.study_ids: list[str] = []
+        
     def _load_labels(self):
         """
         Load labels from CSV file into a dictionary.
@@ -184,9 +185,36 @@ class ImageLoader:
         human_readable_labels = labels_df.iloc[indices_with_ones]["label"].tolist()
         # Output the labels
         print("Human-readable labels:", human_readable_labels)
+    
+    def _filter_df(self, df, study_ids):
+        print(f"Label coordinates DF will be filtered based on study_ids: {study_ids}")
+        self_study_ids = list(map(int, self.study_ids))
+        df = df[df["study_id"].isin(self_study_ids)]
+        print(f"Label coordinates DF filtered based on study_ids, new shape: {df.shape}")
+        return df
 
     def _feature_label_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
+        """ Generate features and labels for the dataset. 
+            This method implements a method to return feature and label tensors for the dataset.
+            
+            The method reads the label_coordinates_csv file and reads a random row from the file.
+            It then generates a feature tensor by calling the _preprocess_image method and generates a label tensor
+            by creating a one-hot encoded vector for the label. The method then returns the feature and label tensors.
+            
+            The while loop returns unlimited number of feature and label tensors until all rows from the label_coordinates_csv
+            file are exhausted.
+        
+        """
+        # read the label_coordinates.csv file       
         label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
+        
+        # filter the label_corrdinates_df based on the study_ids
+        if self.study_ids:
+            print("Available Study IDs in DataFrame:", len(label_coordinates_df['study_id'].unique()))
+            label_coordinates_df = self._filter_df(label_coordinates_df, self.study_ids)
+            if len(label_coordinates_df) == 0:
+                print("No rows found for the study_ids provided")
+        
         labels_df = pd.read_csv(self.label_coordinates_csv)
 
         # Create a combined label column, this should match the header of the labels.csv file
@@ -209,23 +237,13 @@ class ImageLoader:
         while len(label_coordinates_df) > 0:
             print("*" * 100)
 
-            # Filter the dataframe based on what split is asked for in the generator
-            if self.split == "train":
+            # Filter the dataframe based on the split requested in the generator
+            if self.split in ["train", "val", "test"]:
                 label_coordinates_df = label_coordinates_df[
-                    label_coordinates_df["split"] == "train"
-                ]
-            elif self.split == "val":
-                label_coordinates_df = label_coordinates_df[
-                    label_coordinates_df["split"] == "val"
-                ]
-            elif self.split == "test":
-                label_coordinates_df = label_coordinates_df[
-                    label_coordinates_df["split"] == "test"
-                ]
-
-            row = label_coordinates_df.sample(
-                n=1
-            )  # randomly select one row from the dataframe to return
+                    label_coordinates_df["split"] == self.split]
+            
+            # randomly select one row from the dataframe to return
+            row = label_coordinates_df.sample(n=1)  
 
             study_id = row["study_id"].values[0]
             series_id = row["series_id"].values[0]
@@ -281,7 +299,8 @@ class ImageLoader:
         )
         return dataset
 
-    def load_data(self, split):
+    def load_data(self, split, 
+                  study_ids: list[str] = None):
         """
         Load and prepare the data for training and validation.
 
@@ -294,6 +313,9 @@ class ImageLoader:
             self.split = split
         else:
             raise ValueError(f"Unknown split: {split}")
+        
+        if study_ids is not None:
+            self.study_ids = study_ids
 
         # Create the dataset
         dataset = self.create_dataset()

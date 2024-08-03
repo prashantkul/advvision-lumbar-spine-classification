@@ -17,7 +17,6 @@ class ModelTrainer:
             loss="binary_crossentropy",
             metrics=["binary_accuracy",                 
                      tf.keras.metrics.AUC(multi_label=True, num_labels=self.model.num_classes),
-                     "val_loss", "val_binary_accuracy", "val_auc"
                     ],
         )
 
