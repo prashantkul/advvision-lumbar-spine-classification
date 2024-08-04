@@ -243,6 +243,20 @@ class ImageLoader:
         print(f"Label coordinates DF filtered based on study_ids, new shape: {df.shape}")
         return df
 
+    def _sample_dataframe(self, df, fraction=0.4):
+        """
+        Sample the dataframe while maintaining the proportions of each split.
+        
+        Args:
+        df (pd.DataFrame): Input dataframe
+        fraction (float): Fraction of data to sample (default: 0.4)
+        
+        Returns:
+        pd.DataFrame: Sampled dataframe
+        """
+        sampled_df = df.groupby('split', group_keys=False).apply(lambda x: x.sample(frac=fraction, random_state=42))
+        return sampled_df
+    
     def _feature_label_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
         """ Generate features and labels for the dataset. 
             This method implements a method to return feature and label tensors for the dataset.
@@ -280,7 +294,10 @@ class ImageLoader:
 
         # Create a new split column in the dataframe for train, test and validation split.
         label_coordinates_df = self._create_split(label_coordinates_df)
-
+        
+        # Sample 40% of the data
+        label_coordinates_df = self._sample_dataframe(label_coordinates_df, fraction=constants.TRAIN_SAMPLE_RATE)
+    
         total_samples = len(label_coordinates_df)
         processed_samples = 0
         
