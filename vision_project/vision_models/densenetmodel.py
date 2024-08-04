@@ -17,7 +17,6 @@ class ModelTrainer:
             loss="binary_crossentropy",
             metrics=["binary_accuracy",                 
                      tf.keras.metrics.AUC(multi_label=True, num_labels=self.model.num_classes),
-                     "val_loss", "val_binary_accuracy", "val_auc"
                     ],
         )
 
@@ -35,10 +34,8 @@ class ModelTrainer:
 
         model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
             filepath="best_model.keras",
-            monitor="val_categorical_accuracy",  # Changed to match the metric name
-            save_best_only=True,
-            mode="max",
-            verbose=1,
+            save_weights_only=True,  # Save only the weights (not the entire model)
+            save_freq='epoch' # Save every epoch
         )
 
         reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
