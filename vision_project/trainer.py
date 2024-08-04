@@ -70,17 +70,18 @@ class VisionModelPipeline:
 def main():
     pipeline = VisionModelPipeline()
     #pipeline.setup_environment()
-    study_ids = ['4003253','8785691', '7143189','4646740']
-    train_dataset = pipeline.load_data("train", study_ids)
-    #val_dataset = pipeline.load_data("val")
-    for img, labels in train_dataset.take(1):
-        print(img.shape)
-        print(labels.shape)
-        print(labels)
+    study_ids = []
+    #study_ids = ['4003253','8785691', '7143189','4646740']
+    train_dataset = pipeline.load_data("train")
+    val_dataset = pipeline.load_data("val")
+    # for img, labels in train_dataset.take(1):
+    #     print(img.shape)
+    #     print(labels.shape)
+    #     print(labels)
         
-    #model = pipeline.build_model()
-    #history = pipeline.train_model(model, train_dataset, val_dataset)
-    # print(history)
+    model = pipeline.build_model()
+    history = pipeline.train_model(model, train_dataset, val_dataset)
+    print(history)
 
 if __name__ == "__main__":
     main()

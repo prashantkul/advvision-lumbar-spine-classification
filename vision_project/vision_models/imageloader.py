@@ -6,7 +6,7 @@ import cv2
 import tensorflow as tf
 import vision_models.constants as constants
 from typing import Any, Iterator, Tuple
-
+import matplotlib.pyplot as plt
 
 class ImageLoader:
     """
@@ -67,76 +67,124 @@ class ImageLoader:
         image = dicom.pixel_array
         image = image / np.max(image)
         return image
-
-    def _preprocess_image(self, study_id, series_id):
+    
+    def visualize_attention(self, original_img, attended_img, x, y, filename):
         """
-        Preprocess all images in a series.
-
+        Visualize the original and attended images side by side.
+        
         Args:
-            study_id (str): Study ID.
-            series_id (str): Series ID.
-
-        Yields:
-            tuple: Preprocessed image tensor, study_id, series_id.
+        original_img (np.array): Original image
+        attended_img (np.array): Image after applying Gaussian attention
+        x, y (float): Coordinates of the attention center
+        filename (str): Name of the file for saving the visualization
         """
-        print("Preprocessing images")
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+        print(f"Original image shape: {original_img.shape}")
+        print(f"Attended image shape: {attended_img.shape}")
+        
+        ax1.imshow(original_img, cmap='gray')
+        ax1.set_title('Original Image')
+        ax1.axis('off')
+        ax1.plot(x, y, 'r+', markersize=10)  # Mark the attention center
+        
+        ax2.imshow(attended_img, cmap='gray')
+        ax2.set_title('Image with Gaussian Attention')
+        ax2.axis('off')
+        ax2.plot(x, y, 'r+', markersize=10)  # Mark the attention center
+        
+        plt.tight_layout()
+        plt.savefig(filename)
+        plt.close()
+    
+    def apply_gaussian_attention(self, image, x, y, attention_size_ratio=0.5, sigma_ratio=0.3):
+        """
+        Apply Gaussian attention to an image based on x, y coordinates.
+        
+        Args:
+        image (np.array): Original image array
+        x (float): x-coordinate in the original image space
+        y (float): y-coordinate in the original image space
+        attention_size_ratio (float): Ratio of image size to use for attention area
+        sigma_ratio (float): Ratio of attention size to use for sigma
+        
+        Returns:
+        np.array: Image with Gaussian attention applied
+        """
+        height, width = image.shape[:2]
+        
+        # Normalize coordinates
+        norm_x = x / width
+        norm_y = y / height
+        
+        # Calculate attention area size (increase this for a wider attention area)
+        attention_size = int(min(height, width) * attention_size_ratio)
+        sigma = attention_size * sigma_ratio
+        
+        # Create coordinate grid for the entire image
+        y_grid, x_grid = np.ogrid[:height, :width]
+        y_grid = (y_grid - y) / sigma
+        x_grid = (x_grid - x) / sigma
+        
+        # Calculate Gaussian mask for the entire image
+        mask = np.exp(-(x_grid**2 + y_grid**2) / 2)
+        
+        # Normalize the mask to [0.2, 1] range to maintain some visibility across the entire image
+        mask = 0.2 + 0.8 * (mask - mask.min()) / (mask.max() - mask.min())
+        
+        # Apply mask to image
+        attended_img = image * mask[:,:,np.newaxis] if len(image.shape) == 3 else image * mask
+        
+        return attended_img
+
+    def _preprocess_image(self, study_id, series_id, x, y, print_images=False):
+        """ Preprocess images for a given study and series. """
+        
+        print(f"Preprocessing images for study_id: {study_id}, series_id: {series_id}")
+        print(f"Applying Gaussian attention at coordinates: ({x}, {y})")
+        
         series_dir = f"{self.image_dir}/{study_id}/{series_id}"
         print(f"Reading images from {series_dir}")
         images = []
-        for filename in os.listdir(series_dir):
-            if filename.endswith(".dcm"):
-                file_path = f"{series_dir}/{filename}"
-                img = self._read_dicom(file_path)
-                img = tf.convert_to_tensor(img, dtype=tf.float32)
-                img = tf.expand_dims(img, axis=-1)  # Add channel dimension
-                img = tf.image.resize(img, self.roi_size)
-                img = tf.image.grayscale_to_rgb(img)  # Convert to RGB
-                images.append(img)
+        
+        # Create a directory for visualizations in the current working directory
+        current_dir = os.getcwd()
+        vis_dir = os.path.join(current_dir, "visualizations", f"{study_id}_{series_id}")
+        os.makedirs(vis_dir, exist_ok=True)
+        
+        # Get sorted list of DICOM files
+        dicom_files = sorted([f for f in os.listdir(series_dir) if f.endswith(".dcm")])
+        
+        for idx, filename in enumerate(dicom_files):
+            file_path = os.path.join(series_dir, filename)
+            original_img = self._read_dicom(file_path)
+            
+            # Apply Gaussian attention to original image using the single x and y for all images
+            attended_img = self.apply_gaussian_attention(original_img, x, y)
+            
+            # Visualize (for the first 5 images in the series)
+            if print_images:
+                if idx < 5:
+                    vis_filename = os.path.join(vis_dir, f"attention_vis_{idx}.png")
+                    self.visualize_attention(original_img, attended_img, x, y, vis_filename)
+            
+            # Convert to tensor and preprocess
+            img = tf.convert_to_tensor(attended_img, dtype=tf.float32)
+            img = tf.expand_dims(img, axis=-1)  # Add channel dimension
+            img = tf.image.resize(img, self.roi_size)
+            img = tf.image.grayscale_to_rgb(img)  # Convert to RGB
+            
+            images.append(img)
 
-        # Pad images to 192 if necessary, we're padding to max number of dicom images in a series
-        # we precalculated that train_images/2508151528/1550325930 contains the largest number of
-        # images in a series with 192 images. THe model expects tensors of the same size, so we pad
-        # the images to 192.
+        # Pad images to 192 if necessary
         print(f"Number of images in series: {len(images)}")
         if len(images) < 192:
             print(f"Padding tensor to 192 images")
-            padding = tf.zeros((192 - len(images), *images[0].shape), dtype=tf.float32)
+            padding = tf.zeros((192 - len(images), *self.roi_size, 3), dtype=tf.float32)
             images = tf.concat([images, padding], axis=0)
 
-        return tf.stack(images)
-
-    def _extract_patch(self, image, x, y, width, height):
-        """
-        Extract a patch from the image centered at (x, y).
-
-        Args:
-            image (tf.Tensor): Input image.
-            x (float): X-coordinate of the center.
-            y (float): Y-coordinate of the center.
-            width (int): Width of the patch.
-            height (int): Height of the patch.
-
-        Returns:
-            tf.Tensor: Extracted patch.
-        """
-        x = tf.round(x)
-        y = tf.round(y)
-        x1 = x - width // 2
-        y1 = y - height // 2
-        patch = image[y1 : y1 + height, x1 : x1 + width]
-        return patch
-
-    def _combine_labels(self, labels):
-        """
-        Combine multiple labels into a single label.
-
-        Args:
-            labels (tf.Tensor): Input labels.
-
-        Returns:
-            tf.Tensor: Combined label.
-        """
-        return tf.reduce_sum(labels, axis=1)
+        result = tf.stack(images)
+        print(f"Resulting preprocessed image tensor shape: {result.shape}")
+        return result
 
     def _create_split(self, df):
         """
@@ -146,7 +194,7 @@ class ImageLoader:
             dataframe (pd.DataFrame): Input dataframe.
 
         Returns:
-            tuple: Train and validation dataframes.
+            A dataframe containing a new column for split.
         """
         # given a dataframe, split it into train, test and validation dataframes
         # USING TRAIN_SPLIT = 0.80 VAL_SPLIT = 0.10 TEST_SPLIT = 0.10
@@ -172,17 +220,19 @@ class ImageLoader:
         return df
 
     def _analyze_splits(self):
+        """ Analyze the splits of the data. """
         label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
         # split the dataframe for train, test and validation
         label_coordinates_df = self._create_split(label_coordinates_df)
 
-    def _create_human_readable_label(self, label_vector, labels_df):
+    def _create_human_readable_label(self, label_vector, label_list):
+        """ Create human-readable labels from one-hot encoded vector. """
         # Convert label_vector to numpy array if it's not already
         label_vector = np.array(label_vector)
         # Remove the [0] indexing if label_vector is 1D
         indices_with_ones = np.where(label_vector == 1)[0]
-        # Make sure labels_df has an index that matches the indices_with_ones
-        human_readable_labels = labels_df.iloc[indices_with_ones]["label"].tolist()
+        # Select the corresponding labels from label_list
+        human_readable_labels = [label_list[i] for i in indices_with_ones]
         # Output the labels
         print("Human-readable labels:", human_readable_labels)
     
@@ -208,17 +258,8 @@ class ImageLoader:
         # read the label_coordinates.csv file       
         label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
         
-        # filter the label_corrdinates_df based on the study_ids
-        if self.study_ids:
-            print("Available Study IDs in DataFrame:", len(label_coordinates_df['study_id'].unique()))
-            label_coordinates_df = self._filter_df(label_coordinates_df, self.study_ids)
-            if len(label_coordinates_df) == 0:
-                print("No rows found for the study_ids provided")
-        
-        labels_df = pd.read_csv(self.label_coordinates_csv)
-
         # Create a combined label column, this should match the header of the labels.csv file
-        labels_df["label"] = labels_df.apply(
+        label_coordinates_df["label"] = label_coordinates_df.apply(
             lambda row: (
                 row["condition"].replace(" ", "_")
                 + "_"
@@ -226,18 +267,25 @@ class ImageLoader:
             ).lower(),
             axis=1,
         )
+        
+        # filter the label_corrdinates_df based on the study_ids
+        if self.study_ids:
+            print("Available Study IDs in DataFrame:", len(label_coordinates_df['study_id'].unique()))
+            label_coordinates_df = self._filter_df(label_coordinates_df, self.study_ids)
+            if len(label_coordinates_df) == 0:
+                print("No rows found for the study_ids provided")
 
         # Extract unique labels and store them from train.csv, we will match generated labels against this list
         self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()
 
-        # split the dataframe for train, test and validation
+        # Create a new split column in the dataframe for train, test and validation split.
         label_coordinates_df = self._create_split(label_coordinates_df)
 
         # This loop iterates until all the rows have beene exahused for the generator
         while len(label_coordinates_df) > 0:
             print("*" * 100)
 
-            # Filter the dataframe based on the split requested in the generator
+            # Filter the dataframe based on the split requested in the generator, only return those rows
             if self.split in ["train", "val", "test"]:
                 label_coordinates_df = label_coordinates_df[
                     label_coordinates_df["split"] == self.split]
@@ -257,8 +305,7 @@ class ImageLoader:
             )
 
             # Preprocess the image before supplying to the generator.
-            # TBD: This is the place for Gaussian attention mask
-            img_tensor = self._preprocess_image(study_id, series_id)
+            img_tensor = self._preprocess_image(study_id, series_id, x , y)
             print(
                 f"Feature tensor generated, size: {img_tensor.shape}, now generating label"
             )
@@ -274,7 +321,7 @@ class ImageLoader:
             one_hot_vector[label_vector] = 1.0
 
             print(f"One hot vector generated: {one_hot_vector}")
-            self._create_human_readable_label(one_hot_vector, labels_df)
+            self._create_human_readable_label(one_hot_vector, self.label_list)
 
             one_hot_vector_array = np.array(one_hot_vector, dtype=np.float32)
             print("Returning feature and label tensors")
@@ -312,7 +359,7 @@ class ImageLoader:
         if split == "train" or split == "val" or split == "test":
             self.split = split
         else:
-            raise ValueError(f"Unknown split: {split}")
+            raise ValueError(f"Unknown split: {split}, correct values are: train, val, test")
         
         if study_ids is not None:
             self.study_ids = study_ids
