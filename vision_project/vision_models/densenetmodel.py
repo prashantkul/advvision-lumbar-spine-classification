@@ -35,7 +35,7 @@ class ModelTrainer:
         model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
             filepath="best_model.keras",
             save_weights_only=True,  # Save only the weights (not the entire model)
-            period=1  # Save every epoch
+            save_freq='epoch' # Save every epoch
         )
 
         reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
