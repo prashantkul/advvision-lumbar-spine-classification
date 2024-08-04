@@ -281,6 +281,9 @@ class ImageLoader:
         # Create a new split column in the dataframe for train, test and validation split.
         label_coordinates_df = self._create_split(label_coordinates_df)
 
+        total_samples = len(label_coordinates_df)
+        processed_samples = 0
+        
         # This loop iterates until all the rows have beene exahused for the generator
         while len(label_coordinates_df) > 0:
             print("*" * 100)
@@ -300,32 +303,38 @@ class ImageLoader:
             x = row["x"].values[0]
             y = row["y"].values[0]
 
-            print(
-                f"Going to generate feature for study_id: {study_id}, series_id: {series_id}, condition: {condition}, level: {level}"
-            )
+            # print(
+            #     f"Going to generate feature for study_id: {study_id}, series_id: {series_id}, condition: {condition}, level: {level}"
+            # )
 
             # Preprocess the image before supplying to the generator.
             img_tensor = self._preprocess_image(study_id, series_id, x , y)
-            print(
-                f"Feature tensor generated, size: {img_tensor.shape}, now generating label"
-            )
+            # print(
+            #     f"Feature tensor generated, size: {img_tensor.shape}, now generating label"
+            # )
             # Create a unique label for the combination of study_id, series_id, condition, and level
             label = f"{row['condition'].values[0].replace(' ', '_').lower()}_{row['level'].values[0].replace('/', '_').lower()}"
             try:
                 label_vector = self.label_list.index(label)
             except ValueError:
                 raise ValueError(f"Label {label} not found in the label list")
-            print(f"Label generated")
+           # print(f"Label generated")
             # Create a one-hot encoded vector
             one_hot_vector = [0.0] * len(self.label_list)
             one_hot_vector[label_vector] = 1.0
 
-            print(f"One hot vector generated: {one_hot_vector}")
+            #print(f"One hot vector generated: {one_hot_vector}")
             self._create_human_readable_label(one_hot_vector, self.label_list)
 
             one_hot_vector_array = np.array(one_hot_vector, dtype=np.float32)
-            print("Returning feature and label tensors")
+            #print("Returning feature and label tensors")
+          
             yield img_tensor, one_hot_vector_array
+            
+            #print progress after every 10 samples
+            processed_samples += 1
+            if processed_samples % 10 == 0:  # Print progress every 10 samples
+                print(f"Progress: {processed_samples}/{total_samples} samples processed ({processed_samples/total_samples:.2%})")
 
     def create_dataset(self):
         """

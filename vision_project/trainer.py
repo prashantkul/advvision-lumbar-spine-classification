@@ -9,7 +9,7 @@ class VisionModelPipeline:
     def __init__(self):
         self.vutil = VisionUtils()
         self.strategy = self._get_strategy()
-        self.batch_size = 1
+        self.batch_size = 24
         with self.strategy.scope():
             self.image_loader = ImageLoader(
                 label_coordinates_csv=constants.TRAIN_LABEL_CORD_PATH,
@@ -21,13 +21,13 @@ class VisionModelPipeline:
             self.input_shape = (self.batch_size, 192, 224, 224, 3)  # Updated to include the slice dimension
             self.num_classes = 25
             self.weights = 'imagenet'
-            self.epochs = 5
+            self.epochs = 2
 
     def _get_strategy(self):
         gpus = tf.config.experimental.list_physical_devices('GPU')
         if len(gpus) > 1:
             print(f"Using MirroredStrategy with {len(gpus)} GPUs")
-            return tf.distribute.MirroredStrategy()
+            return tf.distribute.MirroredStrategy(devices=["/gpu:0", "/gpu:1"])
         elif len(gpus) == 1:
             print("Using single GPU")
             return tf.distribute.OneDeviceStrategy(device="/gpu:0")
@@ -48,7 +48,7 @@ class VisionModelPipeline:
         print("Creating datasets...")
         dataset = self.image_loader.load_data(mode, study_ids)
         
-        return dataset
+        return self.strategy.experimental_distribute_dataset(dataset)
 
     def build_model(self):
         with self.strategy.scope():
