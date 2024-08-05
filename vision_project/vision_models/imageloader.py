@@ -144,12 +144,7 @@ class ImageLoader:
         
         series_dir = f"{self.image_dir}/{study_id}/{series_id}"
         print(f"Reading images from {series_dir}")
-        images = []
-        
-        # Create a directory for visualizations in the current working directory
-        current_dir = os.getcwd()
-        vis_dir = os.path.join(current_dir, "visualizations", f"{study_id}_{series_id}")
-        os.makedirs(vis_dir, exist_ok=True)
+        images = []           
         
         # Get sorted list of DICOM files
         dicom_files = sorted([f for f in os.listdir(series_dir) if f.endswith(".dcm")])
@@ -164,6 +159,9 @@ class ImageLoader:
             # Visualize (for the first 5 images in the series)
             if print_images:
                 if idx < 5:
+                    current_dir = os.getcwd()
+                    vis_dir = os.path.join(current_dir, "visualizations", f"{study_id}_{series_id}")
+                    os.makedirs(vis_dir, exist_ok=True)
                     vis_filename = os.path.join(vis_dir, f"attention_vis_{idx}.png")
                     self.visualize_attention(original_img, attended_img, x, y, vis_filename)
             
@@ -254,7 +252,18 @@ class ImageLoader:
         Returns:
         pd.DataFrame: Sampled dataframe
         """
+        print("\nBefore sampling:")
+        for split in df['split'].unique():
+            split_df = df[df['split'] == split]
+            print(f"{split} split - Size: {len(split_df)}, Shape: {split_df.shape}")
+        
         sampled_df = df.groupby('split', group_keys=False).apply(lambda x: x.sample(frac=fraction, random_state=42))
+        
+        print("\nAfter sampling:")
+        for split in sampled_df['split'].unique():
+            split_df = sampled_df[sampled_df['split'] == split]
+            print(f"{split} split - Size: {len(split_df)}, Shape: {split_df.shape}")
+    
         return sampled_df
     
     def _feature_label_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:

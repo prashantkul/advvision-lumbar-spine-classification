@@ -9,7 +9,7 @@ class VisionModelPipeline:
     def __init__(self):
         self.vutil = VisionUtils()
         self.strategy = self._get_strategy()
-        self.batch_size = 24
+        self.batch_size = 1
         with self.strategy.scope():
             self.image_loader = ImageLoader(
                 label_coordinates_csv=constants.TRAIN_LABEL_CORD_PATH,
@@ -47,8 +47,10 @@ class VisionModelPipeline:
     def load_data(self, mode, study_ids: list[str] = None):
         print("Creating datasets...")
         dataset = self.image_loader.load_data(mode, study_ids)
-        
-        return self.strategy.experimental_distribute_dataset(dataset)
+        if self.strategy is tf.distribute.OneDeviceStrategy(device="/cpu:0"):
+            return dataset
+        else:
+            return self.strategy.experimental_distribute_dataset(dataset)
 
     def build_model(self):
         with self.strategy.scope():
@@ -67,6 +69,31 @@ class VisionModelPipeline:
             history = trainer.train(train_dataset, val_dataset, epochs=self.epochs)
         return history
 
+    def _print_distributed_dataset(self, dataset: tf.distribute.DistributedDataset 
+                                , num_elements=1):
+        iterator = iter(dataset)
+        for _ in range(num_elements):
+            try:
+                distributed_element = next(iterator)
+                elements = self.strategy.experimental_local_results(distributed_element)
+                
+                # Handle the case where elements is a tuple of tuples
+                if isinstance(elements[0], tuple):
+                    img, label = elements[0]
+                else:
+                    img, label = elements
+
+                print("Image shape:", img.shape)
+                print("Label shape:", label.shape)
+                print("Label:", label)
+                print("-" * 50)
+            except StopIteration:
+                break
+            except Exception as e:
+                print(f"An error occurred: {e}")
+                print("Element structure:", elements)
+                break
+
 def main():
     pipeline = VisionModelPipeline()
     #pipeline.setup_environment()
@@ -74,14 +101,11 @@ def main():
     #study_ids = ['4003253','8785691', '7143189','4646740']
     train_dataset = pipeline.load_data("train")
     val_dataset = pipeline.load_data("val")
-    # for img, labels in train_dataset.take(1):
-    #     print(img.shape)
-    #     print(labels.shape)
-    #     print(labels)
-        
-    model = pipeline.build_model()
-    history = pipeline.train_model(model, train_dataset, val_dataset)
-    print(history)
+    pipeline._print_distributed_dataset(train_dataset, num_elements=1)
+
+    # model = pipeline.build_model()
+    # history = pipeline.train_model(model, train_dataset, val_dataset)
+    # print(history)
 
 if __name__ == "__main__":
     main()
