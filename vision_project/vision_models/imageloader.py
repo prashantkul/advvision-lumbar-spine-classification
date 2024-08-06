@@ -193,19 +193,13 @@ class ImageLoader:
 
         Returns:
             A dataframe containing a new column for split.
-        """
-        # given a dataframe, split it into train, test and validation dataframes
-        # USING TRAIN_SPLIT = 0.80 VAL_SPLIT = 0.10 TEST_SPLIT = 0.10
+        """        
         # Calculate split indices
         train_end = int(len(df) * constants.TRAIN_SPLIT)
         val_end = train_end + int(len(df) * constants.VAL_SPLIT)
 
         # Shuffle the DataFrame
         df = df.sample(frac=1, random_state=42).reset_index(drop=True)
-
-        # Calculate split indices
-        train_end = int(len(df) * constants.TRAIN_SPLIT)
-        val_end = train_end + int(len(df) * constants.VAL_SPLIT)
 
         # Initialize the 'split' column
         df["split"] = None
@@ -338,6 +332,7 @@ class ImageLoader:
             # print(
             #     f"Feature tensor generated, size: {img_tensor.shape}, now generating label"
             # )
+            
             # Create a unique label for the combination of study_id, series_id, condition, and level
             label = f"{row['condition'].values[0].replace(' ', '_').lower()}_{row['level'].values[0].replace('/', '_').lower()}"
             try:
@@ -349,18 +344,13 @@ class ImageLoader:
             one_hot_vector = [0.0] * len(self.label_list)
             one_hot_vector[label_vector] = 1.0
 
-            #print(f"One hot vector generated: {one_hot_vector}")
+            print(f"One hot enocded label vector generated: {one_hot_vector}")
             self._create_human_readable_label(one_hot_vector, self.label_list)
 
             one_hot_vector_array = np.array(one_hot_vector, dtype=np.float32)
             #print("Returning feature and label tensors")
           
             yield img_tensor, one_hot_vector_array
-            
-            #print progress after every 10 samples
-            processed_samples += 1
-            if processed_samples % 10 == 0:  # Print progress every 10 samples
-                print(f"Progress: {processed_samples}/{total_samples} samples processed ({processed_samples/total_samples:.2%})")
 
     def create_dataset(self):
         """

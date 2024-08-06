@@ -9,7 +9,7 @@ class VisionModelPipeline:
     def __init__(self):
         self.vutil = VisionUtils()
         self.strategy = self._get_strategy()
-        self.batch_size = 1
+        self.batch_size = 1 # change batch size to 24 for training. Batch greater than 24 will result in OOM error
         with self.strategy.scope():
             self.image_loader = ImageLoader(
                 label_coordinates_csv=constants.TRAIN_LABEL_CORD_PATH,
@@ -101,8 +101,10 @@ def main():
     #study_ids = ['4003253','8785691', '7143189','4646740']
     train_dataset = pipeline.load_data("train")
     val_dataset = pipeline.load_data("val")
+    
     pipeline._print_distributed_dataset(train_dataset, num_elements=1)
 
+    # Uncomment code below
     # model = pipeline.build_model()
     # history = pipeline.train_model(model, train_dataset, val_dataset)
     # print(history)
