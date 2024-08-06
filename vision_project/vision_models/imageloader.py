@@ -144,12 +144,7 @@ class ImageLoader:
         
         series_dir = f"{self.image_dir}/{study_id}/{series_id}"
         print(f"Reading images from {series_dir}")
-        images = []
-        
-        # Create a directory for visualizations in the current working directory
-        current_dir = os.getcwd()
-        vis_dir = os.path.join(current_dir, "visualizations", f"{study_id}_{series_id}")
-        os.makedirs(vis_dir, exist_ok=True)
+        images = []           
         
         # Get sorted list of DICOM files
         dicom_files = sorted([f for f in os.listdir(series_dir) if f.endswith(".dcm")])
@@ -161,11 +156,14 @@ class ImageLoader:
             # Apply Gaussian attention to original image using the single x and y for all images
             attended_img = self.apply_gaussian_attention(original_img, x, y)
             
-            # Visualize (for the first 5 images in the series)
-            if print_images:
-                if idx < 5:
-                    vis_filename = os.path.join(vis_dir, f"attention_vis_{idx}.png")
-                    self.visualize_attention(original_img, attended_img, x, y, vis_filename)
+            # # Visualize (for the first 5 images in the series)
+            # if print_images:
+            #     if idx < 5:
+            #         current_dir = os.getcwd()
+            #         vis_dir = os.path.join(current_dir, "visualizations", f"{study_id}_{series_id}")
+            #         os.makedirs(vis_dir, exist_ok=True)
+            #         vis_filename = os.path.join(vis_dir, f"attention_vis_{idx}.png")
+            #         self.visualize_attention(original_img, attended_img, x, y, vis_filename)
             
             # Convert to tensor and preprocess
             img = tf.convert_to_tensor(attended_img, dtype=tf.float32)
@@ -195,19 +193,13 @@ class ImageLoader:
 
         Returns:
             A dataframe containing a new column for split.
-        """
-        # given a dataframe, split it into train, test and validation dataframes
-        # USING TRAIN_SPLIT = 0.80 VAL_SPLIT = 0.10 TEST_SPLIT = 0.10
+        """        
         # Calculate split indices
         train_end = int(len(df) * constants.TRAIN_SPLIT)
         val_end = train_end + int(len(df) * constants.VAL_SPLIT)
 
         # Shuffle the DataFrame
         df = df.sample(frac=1, random_state=42).reset_index(drop=True)
-
-        # Calculate split indices
-        train_end = int(len(df) * constants.TRAIN_SPLIT)
-        val_end = train_end + int(len(df) * constants.VAL_SPLIT)
 
         # Initialize the 'split' column
         df["split"] = None
@@ -243,6 +235,31 @@ class ImageLoader:
         print(f"Label coordinates DF filtered based on study_ids, new shape: {df.shape}")
         return df
 
+    def _sample_dataframe(self, df, fraction=0.4):
+        """
+        Sample the dataframe while maintaining the proportions of each split.
+        
+        Args:
+        df (pd.DataFrame): Input dataframe
+        fraction (float): Fraction of data to sample (default: 0.4)
+        
+        Returns:
+        pd.DataFrame: Sampled dataframe
+        """
+        print("\nBefore sampling:")
+        for split in df['split'].unique():
+            split_df = df[df['split'] == split]
+            print(f"{split} split - Size: {len(split_df)}, Shape: {split_df.shape}")
+        
+        sampled_df = df.groupby('split', group_keys=False).apply(lambda x: x.sample(frac=fraction, random_state=42))
+        
+        print("\nAfter sampling:")
+        for split in sampled_df['split'].unique():
+            split_df = sampled_df[sampled_df['split'] == split]
+            print(f"{split} split - Size: {len(split_df)}, Shape: {split_df.shape}")
+    
+        return sampled_df
+    
     def _feature_label_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
         """ Generate features and labels for the dataset. 
             This method implements a method to return feature and label tensors for the dataset.
@@ -280,18 +297,31 @@ class ImageLoader:
 
         # Create a new split column in the dataframe for train, test and validation split.
         label_coordinates_df = self._create_split(label_coordinates_df)
+        
+        # Sample 40% of the data
+        label_coordinates_df = self._sample_dataframe(label_coordinates_df, fraction=constants.TRAIN_SAMPLE_RATE)
+    
+        total_samples = len(label_coordinates_df)
+        processed_samples = 0
 
+        # Filter the dataframe based on the split requested in the generator, only return those rows
+        if self.split in ["train", "val", "test"]:
+            label_coordinates_df = label_coordinates_df[
+                label_coordinates_df["split"] == self.split]
+            
         # This loop iterates until all the rows have beene exahused for the generator
-        while len(label_coordinates_df) > 0:
+        while True:
+            if len(label_coordinates_df) == 0:
+                print("All samples processed. Raising StopIteration.")
+                raise StopIteration
+            
             print("*" * 100)
-
-            # Filter the dataframe based on the split requested in the generator, only return those rows
-            if self.split in ["train", "val", "test"]:
-                label_coordinates_df = label_coordinates_df[
-                    label_coordinates_df["split"] == self.split]
             
             # randomly select one row from the dataframe to return
-            row = label_coordinates_df.sample(n=1)  
+            row = label_coordinates_df.sample(n=1)
+            
+            # Remove the selected row from the DataFrame
+            label_coordinates_df = label_coordinates_df.drop(row.index) 
 
             study_id = row["study_id"].values[0]
             series_id = row["series_id"].values[0]
@@ -300,32 +330,39 @@ class ImageLoader:
             x = row["x"].values[0]
             y = row["y"].values[0]
 
-            print(
-                f"Going to generate feature for study_id: {study_id}, series_id: {series_id}, condition: {condition}, level: {level}"
-            )
+            # print(
+            #     f"Going to generate feature for study_id: {study_id}, series_id: {series_id}, condition: {condition}, level: {level}"
+            # )
 
             # Preprocess the image before supplying to the generator.
             img_tensor = self._preprocess_image(study_id, series_id, x , y)
-            print(
-                f"Feature tensor generated, size: {img_tensor.shape}, now generating label"
-            )
+            # print(
+            #     f"Feature tensor generated, size: {img_tensor.shape}, now generating label"
+            # )
+            
             # Create a unique label for the combination of study_id, series_id, condition, and level
             label = f"{row['condition'].values[0].replace(' ', '_').lower()}_{row['level'].values[0].replace('/', '_').lower()}"
             try:
                 label_vector = self.label_list.index(label)
             except ValueError:
                 raise ValueError(f"Label {label} not found in the label list")
-            print(f"Label generated")
+           # print(f"Label generated")
             # Create a one-hot encoded vector
             one_hot_vector = [0.0] * len(self.label_list)
             one_hot_vector[label_vector] = 1.0
 
-            print(f"One hot vector generated: {one_hot_vector}")
+            print(f"One hot enocded label vector generated: {one_hot_vector}")
             self._create_human_readable_label(one_hot_vector, self.label_list)
 
             one_hot_vector_array = np.array(one_hot_vector, dtype=np.float32)
-            print("Returning feature and label tensors")
+            #print("Returning feature and label tensors")
+          
             yield img_tensor, one_hot_vector_array
+            
+            #print progress after every 10 samples
+            processed_samples += 1
+            if processed_samples % 10 == 0:  # Print progress every 10 samples
+                print(f"## Progress check : {processed_samples}/{total_samples} samples processed ({processed_samples/total_samples:.2%})")
 
     def create_dataset(self):
         """

@@ -33,7 +33,7 @@ class ModelTrainer:
         )
 
         model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
-            filepath="best_model.keras",
+            filepath="best_model.weights.h5",
             save_weights_only=True,  # Save only the weights (not the entire model)
             save_freq='epoch' # Save every epoch
         )
