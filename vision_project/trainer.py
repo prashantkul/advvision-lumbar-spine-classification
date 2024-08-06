@@ -3,13 +3,14 @@ from vision_models.utils import VisionUtils
 from vision_models import constants
 from vision_models.imageloader import ImageLoader
 from vision_models.densenetmodel import DenseNetVisionModel, ModelTrainer
+import pickle
 
 class VisionModelPipeline:
 
     def __init__(self):
         self.vutil = VisionUtils()
         self.strategy = self._get_strategy()
-        self.batch_size = 1 # change batch size to 24 for training. Batch greater than 24 will result in OOM error
+        self.batch_size = 24 # change batch size to 24 for training. Batch greater than 24 will result in OOM error
         with self.strategy.scope():
             self.image_loader = ImageLoader(
                 label_coordinates_csv=constants.TRAIN_LABEL_CORD_PATH,
@@ -21,7 +22,7 @@ class VisionModelPipeline:
             self.input_shape = (self.batch_size, 192, 224, 224, 3)  # Updated to include the slice dimension
             self.num_classes = 25
             self.weights = 'imagenet'
-            self.epochs = 2
+            self.epochs = 10
 
     def _get_strategy(self):
         gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -102,12 +103,14 @@ def main():
     train_dataset = pipeline.load_data("train")
     val_dataset = pipeline.load_data("val")
     
-    pipeline._print_distributed_dataset(train_dataset, num_elements=1)
+    #pipeline._print_distributed_dataset(train_dataset, num_elements=1)
 
-    # Uncomment code below
-    # model = pipeline.build_model()
-    # history = pipeline.train_model(model, train_dataset, val_dataset)
-    # print(history)
+    # Uncomment code below for training the model
+    model = pipeline.build_model()
+    history = pipeline.train_model(model, train_dataset, val_dataset)
+    print(history)
+    with open('history.pkl', 'wb') as file:
+        pickle.dump(history.history, file)
 
 if __name__ == "__main__":
     main()
