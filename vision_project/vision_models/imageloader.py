@@ -33,7 +33,7 @@ class ImageLoader:
         self.label_coordinates_csv = label_coordinates_csv
         self.labels_csv = labels_csv
         self.study_id_to_labels = self._load_labels() if mode != 'predict' else {}
-        self.study_id_to_labels = self._load_labels()
+        # self.study_id_to_labels = self._load_labels()
         self.roi_size = roi_size
         self.batch_size = batch_size
         self.split = None
@@ -454,7 +454,7 @@ class ImageLoader:
             for study_id in os.listdir(test_image_dir):
                 study_dir = os.path.join(test_image_dir, study_id)
                 for series_id in os.listdir(study_dir):
-                    series_dir = os.path.join(study_dir, series_id)
+                    series_dir = os.path.join(series_dir, series_id)
                     images = sorted([os.path.join(series_dir, f) for f in os.listdir(series_dir) if f.endswith(".dcm")])
                     if not images:
                         continue

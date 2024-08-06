@@ -16,14 +16,16 @@ class VisionModelPredictor:
             label_coordinates_csv=constants.TRAIN_LABEL_CORD_PATH,
             labels_csv=constants.TRAIN_LABEL_PATH,
             roi_size=(224, 224),
-            batch_size=self.batch_size
+            batch_size=self.batch_size,
+            mode ="val"
         )
         self.test_image_loader = ImageLoader(
             image_dir=constants.TEST_DATA_PATH,
             label_coordinates_csv=None,
             labels_csv=None,
             roi_size=(224, 224),
-            batch_size=self.batch_size
+            batch_size=self.batch_size,
+            mode='predict'
         )
         self.input_shape = (self.batch_size, 192, 224, 224, 3)
         self.num_classes = 25
@@ -39,9 +41,13 @@ class VisionModelPredictor:
         if split == 'val':
             return self.val_image_loader.load_data(split)
         else:
-            return self.test_image_loader.load_data(split)
+            return self.test_image_loader.load_test_data(constants.TEST_DATA_PATH)
 
     def evaluate(self, val_dataset):
+        # Count the number of records in the validation dataset
+        val_count = sum(1 for _ in val_dataset)
+        print(f"Number of records in the validation dataset: {val_count}")
+
         results = self.model.evaluate(val_dataset)
         print(f"Evaluation results: {results}")
         return results
@@ -76,17 +82,44 @@ class VisionModelPredictor:
 
         predictions = np.concatenate(predictions, axis=0)
         self.save_predictions(predictions, output_csv, study_ids)
+        print(f"Total records processed: {len(study_ids)}")
+
+def count_studies_series_images(image_dir):
+    study_count = 0
+    series_count = 0
+    image_count = 0
+
+    for study_id in os.listdir(image_dir):
+        study_count += 1
+        study_dir = os.path.join(image_dir, study_id)
+        for series_id in os.listdir(study_dir):
+            series_count += 1
+            series_dir = os.path.join(study_dir, series_id)
+            images = [os.path.join(series_dir, f) for f in os.listdir(series_dir) if f.endswith(".dcm")]
+            image_count += len(images)
+
+    return study_count, series_count, image_count
 
 def main():
     model_path = constants.DENSENET_MODEL
     output_csv = 'predictions.csv'
+
+    # Print study, series, and image counts for evaluation and prediction steps
+    val_study_count, val_series_count, val_image_count = count_studies_series_images(constants.TRAIN_DATA_PATH)
+    test_study_count, test_series_count, test_image_count = count_studies_series_images(constants.TEST_DATA_PATH)
+
+    print(f"Validation step will run through {val_study_count} studies, {val_series_count} series, and {val_image_count} images.")
+    print(f"Prediction step will run through {test_study_count} studies, {test_series_count} series, and {test_image_count} images.")
+
     predictor = VisionModelPredictor(model_path)
 
     # Evaluation
     val_dataset = predictor.prepare_data('val')  # Using 'val' split for evaluation
+    print("Evaluating on validation dataset")
     predictor.evaluate(val_dataset)
 
     # Prediction
+    print("Running predictions on test dataset")
     predictor.predict(output_csv)
 
 if __name__ == "__main__":
