@@ -217,16 +217,16 @@ class ImageLoader:
         df.loc[train_end:val_end, "split"] = "val"
         df.loc[val_end:, "split"] = "test"
 
-        print(f"Total Records: {len(df)}")
+        # print(f"Total Records: {len(df)}")
 
-        # Print the size of each split
-        train_size = len(df[df["split"] == "train"])
-        val_size = len(df[df["split"] == "val"])
-        test_size = len(df[df["split"] == "test"])
+        # # Print the size of each split
+        # train_size = len(df[df["split"] == "train"])
+        # val_size = len(df[df["split"] == "val"])
+        # test_size = len(df[df["split"] == "test"])
 
-        print(f"Train: {train_size} records")
-        print(f"Validation: {val_size} records")
-        print(f"Test: {test_size} records")
+        # print(f"Train: {train_size} records")
+        # print(f"Validation: {val_size} records")
+        # print(f"Test: {test_size} records")
 
         return df
 
