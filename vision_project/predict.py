@@ -84,14 +84,24 @@ class VisionModelPredictor:
         self.save_predictions(predictions, output_csv, study_ids)
         print(f"Total records processed: {len(study_ids)}")
 
-def count_studies_series_images(image_dir):
+def count_studies_series_images(image_dir, split=None, label_coordinates_csv=None):
     study_count = 0
     series_count = 0
     image_count = 0
 
-    for study_id in os.listdir(image_dir):
+    if split:
+        df = pd.read_csv(label_coordinates_csv)
+        if 'split' not in df.columns:
+            image_loader = ImageLoader(image_dir=image_dir, label_coordinates_csv=label_coordinates_csv, labels_csv=None, roi_size=(224, 224), batch_size=1)
+            df = image_loader._create_split(df)
+        df = df[df["split"] == split]
+        unique_studies = df["study_id"].unique()
+    else:
+        unique_studies = os.listdir(image_dir)
+
+    for study_id in unique_studies:
         study_count += 1
-        study_dir = os.path.join(image_dir, study_id)
+        study_dir = os.path.join(image_dir, str(study_id))  # Convert study_id to string
         for series_id in os.listdir(study_dir):
             series_count += 1
             series_dir = os.path.join(study_dir, series_id)
@@ -104,23 +114,26 @@ def main():
     model_path = constants.DENSENET_MODEL
     output_csv = 'predictions.csv'
 
-    # Print study, series, and image counts for evaluation and prediction steps
-    val_study_count, val_series_count, val_image_count = count_studies_series_images(constants.TRAIN_DATA_PATH)
+    # Print study, series, and image counts for train, validation, and prediction steps
+    train_study_count, train_series_count, train_image_count = count_studies_series_images(constants.TRAIN_DATA_PATH, split='train', label_coordinates_csv=constants.TRAIN_LABEL_CORD_PATH)
+    val_study_count, val_series_count, val_image_count = count_studies_series_images(constants.TRAIN_DATA_PATH, split='val', label_coordinates_csv=constants.TRAIN_LABEL_CORD_PATH)
     test_study_count, test_series_count, test_image_count = count_studies_series_images(constants.TEST_DATA_PATH)
 
+    print(f"Train step will run through {train_study_count} studies, {train_series_count} series, and {train_image_count} images.")
     print(f"Validation step will run through {val_study_count} studies, {val_series_count} series, and {val_image_count} images.")
     print(f"Prediction step will run through {test_study_count} studies, {test_series_count} series, and {test_image_count} images.")
 
-    predictor = VisionModelPredictor(model_path)
+    # predictor = VisionModelPredictor(model_path)
 
-    # Evaluation
-    val_dataset = predictor.prepare_data('val')  # Using 'val' split for evaluation
-    print("Evaluating on validation dataset")
-    predictor.evaluate(val_dataset)
+    # # Evaluation
+    # val_dataset = predictor.prepare_data('val')  # Using 'val' split for evaluation
+    # print(f"Number of records (tensors) in the validation dataset: {len(list(val_dataset))}")
+    # print("Evaluating on validation dataset")
+    # predictor.evaluate(val_dataset)
 
-    # Prediction
-    print("Running predictions on test dataset")
-    predictor.predict(output_csv)
+    # # Prediction
+    # print("Running predictions on test dataset")
+    # predictor.predict(output_csv)
 
 if __name__ == "__main__":
     main()

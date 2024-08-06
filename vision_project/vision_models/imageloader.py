@@ -32,13 +32,17 @@ class ImageLoader:
         self.image_dir = image_dir
         self.label_coordinates_csv = label_coordinates_csv
         self.labels_csv = labels_csv
-        self.study_id_to_labels = self._load_labels() if mode != 'predict' else {}
+        # self.study_id_to_labels = self._load_labels() if mode != 'predict' else {}
         # self.study_id_to_labels = self._load_labels()
         self.roi_size = roi_size
         self.batch_size = batch_size
         self.split = None
         self.study_ids: list[str] = []
         self.mode = mode
+
+        if mode != 'predict':
+            self.study_id_to_labels = self._load_labels()
+            self._analyze_splits()
         
     def _load_labels(self):
         """
@@ -212,6 +216,17 @@ class ImageLoader:
         df.loc[:train_end, "split"] = "train"
         df.loc[train_end:val_end, "split"] = "val"
         df.loc[val_end:, "split"] = "test"
+
+        print(f"Total Records: {len(df)}")
+
+        # Print the size of each split
+        train_size = len(df[df["split"] == "train"])
+        val_size = len(df[df["split"] == "val"])
+        test_size = len(df[df["split"] == "test"])
+
+        print(f"Train: {train_size} records")
+        print(f"Validation: {val_size} records")
+        print(f"Test: {test_size} records")
 
         return df
 
