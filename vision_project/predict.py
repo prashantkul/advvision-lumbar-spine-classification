@@ -11,10 +11,17 @@ class VisionModelPredictor:
     def __init__(self, model_path):
         self.vutil = VisionUtils()
         self.batch_size = constants.BATCH_SIZE
-        self.image_loader = ImageLoader(
+        self.val_image_loader = ImageLoader(
+            image_dir=constants.TRAIN_DATA_PATH,
+            label_coordinates_csv=constants.TRAIN_LABEL_CORD_PATH,
+            labels_csv=constants.TRAIN_LABEL_PATH,
+            roi_size=(224, 224),
+            batch_size=self.batch_size
+        )
+        self.test_image_loader = ImageLoader(
+            image_dir=constants.TEST_DATA_PATH,
             label_coordinates_csv=None,
             labels_csv=None,
-            image_dir=constants.TEST_DATA_PATH,
             roi_size=(224, 224),
             batch_size=self.batch_size
         )
@@ -29,11 +36,13 @@ class VisionModelPredictor:
         return model
 
     def prepare_data(self, split):
-        dataset = self.image_loader.load_data(split)
-        return dataset
+        if split == 'val':
+            return self.val_image_loader.load_data(split)
+        else:
+            return self.test_image_loader.load_data(split)
 
-    def evaluate(self, test_dataset):
-        results = self.model.evaluate(test_dataset)
+    def evaluate(self, val_dataset):
+        results = self.model.evaluate(val_dataset)
         print(f"Evaluation results: {results}")
         return results
 
@@ -60,7 +69,7 @@ class VisionModelPredictor:
                 images = sorted([os.path.join(series_dir, f) for f in os.listdir(series_dir) if f.endswith(".dcm")])
                 if not images:
                     continue
-                img_tensor = self.image_loader._preprocess_image(study_id, series_id, x=0, y=0)  # Dummy x, y for prediction
+                img_tensor = self.test_image_loader._preprocess_image(study_id, series_id, x=0, y=0)  # Dummy x, y for prediction
                 prediction = self.model.predict(np.expand_dims(img_tensor, axis=0))
                 predictions.append(prediction)
                 study_ids.append(study_id)
