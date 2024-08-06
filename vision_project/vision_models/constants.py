@@ -6,6 +6,7 @@ TRAIN_LABEL_CORD_PATH = "/opt/dataset/train_label_coordinates.csv"
 TRAIN_SERIES_DESC_PATH = "/opt/dataset/train_series_descriptions.csv"
 TEST_DATA_PATH = "/opt/dataset/test_images/"
 TEST_SERIES_DESC_PATH = "/opt/dataset/test_series_descriptions.csv"
+DENSENET_MODEL = "/opt/vision_models/stage_1/best_model.weights.h5"
 RANDOM_SEED = 44
 IMAGE_SIZE_HEIGHT = 224
 IMAGE_SIZE_WIDTH = 224

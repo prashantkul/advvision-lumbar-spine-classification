@@ -17,7 +17,7 @@ class ImageLoader:
     """
 
     def __init__(
-        self, image_dir, label_coordinates_csv, labels_csv, roi_size, batch_size
+        self, image_dir, label_coordinates_csv, labels_csv, roi_size, batch_size, mode='train'
     ):
         """
         Initialize the ImageLoader.
@@ -32,11 +32,13 @@ class ImageLoader:
         self.image_dir = image_dir
         self.label_coordinates_csv = label_coordinates_csv
         self.labels_csv = labels_csv
+        self.study_id_to_labels = self._load_labels() if mode != 'predict' else {}
         self.study_id_to_labels = self._load_labels()
         self.roi_size = roi_size
         self.batch_size = batch_size
         self.split = None
         self.study_ids: list[str] = []
+        self.mode = mode
         
     def _load_labels(self):
         """
@@ -45,6 +47,8 @@ class ImageLoader:
         Returns:
             dict: A dictionary mapping study_id to labels.
         """
+        if self.labels_csv is None:
+            return {}
         labels_df = pd.read_csv(self.labels_csv)
         study_id_to_labels = {}
         for index, row in labels_df.iterrows():
@@ -272,93 +276,104 @@ class ImageLoader:
             file are exhausted.
         
         """
-        # read the label_coordinates.csv file       
-        label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
-        
-        # Create a combined label column, this should match the header of the labels.csv file
-        label_coordinates_df["label"] = label_coordinates_df.apply(
-            lambda row: (
-                row["condition"].replace(" ", "_")
-                + "_"
-                + row["level"].replace(" ", "_").replace("/", "_")
-            ).lower(),
-            axis=1,
-        )
-        
-        # filter the label_corrdinates_df based on the study_ids
-        if self.study_ids:
-            print("Available Study IDs in DataFrame:", len(label_coordinates_df['study_id'].unique()))
-            label_coordinates_df = self._filter_df(label_coordinates_df, self.study_ids)
-            if len(label_coordinates_df) == 0:
-                print("No rows found for the study_ids provided")
+        if self.mode == 'predict':
+            # Implement a simpler generator for prediction
+            for study_id in os.listdir(self.image_dir):
+                study_dir = os.path.join(self.image_dir, study_id)
+                for series_id in os.listdir(study_dir):
+                    series_dir = os.path.join(study_dir, series_id)
+                    img_tensor = self._preprocess_image(study_id, series_id)
+                    yield img_tensor, study_id
+        else:
+            # Original implementation for training/validation
 
-        # Extract unique labels and store them from train.csv, we will match generated labels against this list
-        self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()
-
-        # Create a new split column in the dataframe for train, test and validation split.
-        label_coordinates_df = self._create_split(label_coordinates_df)
-        
-        # Sample 40% of the data
-        label_coordinates_df = self._sample_dataframe(label_coordinates_df, fraction=constants.TRAIN_SAMPLE_RATE)
-    
-        total_samples = len(label_coordinates_df)
-        processed_samples = 0
-        
-        # This loop iterates until all the rows have beene exahused for the generator
-        while len(label_coordinates_df) > 0:
-            print("*" * 100)
-
-            # Filter the dataframe based on the split requested in the generator, only return those rows
-            if self.split in ["train", "val", "test"]:
-                label_coordinates_df = label_coordinates_df[
-                    label_coordinates_df["split"] == self.split]
+            # read the label_coordinates.csv file       
+            label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
             
-            # randomly select one row from the dataframe to return
-            row = label_coordinates_df.sample(n=1)
+            # Create a combined label column, this should match the header of the labels.csv file
+            label_coordinates_df["label"] = label_coordinates_df.apply(
+                lambda row: (
+                    row["condition"].replace(" ", "_")
+                    + "_"
+                    + row["level"].replace(" ", "_").replace("/", "_")
+                ).lower(),
+                axis=1,
+            )
             
-            # Remove the selected row from the DataFrame
-            label_coordinates_df = label_coordinates_df.drop(row.index) 
+            # filter the label_corrdinates_df based on the study_ids
+            if self.study_ids:
+                print("Available Study IDs in DataFrame:", len(label_coordinates_df['study_id'].unique()))
+                label_coordinates_df = self._filter_df(label_coordinates_df, self.study_ids)
+                if len(label_coordinates_df) == 0:
+                    print("No rows found for the study_ids provided")
 
-            study_id = row["study_id"].values[0]
-            series_id = row["series_id"].values[0]
-            condition = row["condition"].values[0]
-            level = row["level"].values[0]
-            x = row["x"].values[0]
-            y = row["y"].values[0]
+            # Extract unique labels and store them from train.csv, we will match generated labels against this list
+            self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()
 
-            # print(
-            #     f"Going to generate feature for study_id: {study_id}, series_id: {series_id}, condition: {condition}, level: {level}"
-            # )
-
-            # Preprocess the image before supplying to the generator.
-            img_tensor = self._preprocess_image(study_id, series_id, x , y)
-            # print(
-            #     f"Feature tensor generated, size: {img_tensor.shape}, now generating label"
-            # )
+            # Create a new split column in the dataframe for train, test and validation split.
+            label_coordinates_df = self._create_split(label_coordinates_df)
             
-            # Create a unique label for the combination of study_id, series_id, condition, and level
-            label = f"{row['condition'].values[0].replace(' ', '_').lower()}_{row['level'].values[0].replace('/', '_').lower()}"
-            try:
-                label_vector = self.label_list.index(label)
-            except ValueError:
-                raise ValueError(f"Label {label} not found in the label list")
-           # print(f"Label generated")
-            # Create a one-hot encoded vector
-            one_hot_vector = [0.0] * len(self.label_list)
-            one_hot_vector[label_vector] = 1.0
-
-            print(f"One hot enocded label vector generated: {one_hot_vector}")
-            self._create_human_readable_label(one_hot_vector, self.label_list)
-
-            one_hot_vector_array = np.array(one_hot_vector, dtype=np.float32)
-            #print("Returning feature and label tensors")
-          
-            yield img_tensor, one_hot_vector_array
+            # Sample 40% of the data
+            label_coordinates_df = self._sample_dataframe(label_coordinates_df, fraction=constants.TRAIN_SAMPLE_RATE)
+        
+            total_samples = len(label_coordinates_df)
+            processed_samples = 0
             
-            #print progress after every 10 samples
-            processed_samples += 1
-            if processed_samples % 10 == 0:  # Print progress every 10 samples
-                print(f"Progress: {processed_samples}/{total_samples} samples processed ({processed_samples/total_samples:.2%})")
+            # This loop iterates until all the rows have beene exahused for the generator
+            while len(label_coordinates_df) > 0:
+                print("*" * 100)
+
+                # Filter the dataframe based on the split requested in the generator, only return those rows
+                if self.split in ["train", "val", "test"]:
+                    label_coordinates_df = label_coordinates_df[
+                        label_coordinates_df["split"] == self.split]
+                
+                # randomly select one row from the dataframe to return
+                row = label_coordinates_df.sample(n=1)
+                
+                # Remove the selected row from the DataFrame
+                label_coordinates_df = label_coordinates_df.drop(row.index) 
+
+                study_id = row["study_id"].values[0]
+                series_id = row["series_id"].values[0]
+                condition = row["condition"].values[0]
+                level = row["level"].values[0]
+                x = row["x"].values[0]
+                y = row["y"].values[0]
+
+                # print(
+                #     f"Going to generate feature for study_id: {study_id}, series_id: {series_id}, condition: {condition}, level: {level}"
+                # )
+
+                # Preprocess the image before supplying to the generator.
+                img_tensor = self._preprocess_image(study_id, series_id, x , y)
+                # print(
+                #     f"Feature tensor generated, size: {img_tensor.shape}, now generating label"
+                # )
+                
+                # Create a unique label for the combination of study_id, series_id, condition, and level
+                label = f"{row['condition'].values[0].replace(' ', '_').lower()}_{row['level'].values[0].replace('/', '_').lower()}"
+                try:
+                    label_vector = self.label_list.index(label)
+                except ValueError:
+                    raise ValueError(f"Label {label} not found in the label list")
+            # print(f"Label generated")
+                # Create a one-hot encoded vector
+                one_hot_vector = [0.0] * len(self.label_list)
+                one_hot_vector[label_vector] = 1.0
+
+                print(f"One hot enocded label vector generated: {one_hot_vector}")
+                self._create_human_readable_label(one_hot_vector, self.label_list)
+
+                one_hot_vector_array = np.array(one_hot_vector, dtype=np.float32)
+                #print("Returning feature and label tensors")
+            
+                yield img_tensor, one_hot_vector_array
+                
+                #print progress after every 10 samples
+                processed_samples += 1
+                if processed_samples % 10 == 0:  # Print progress every 10 samples
+                    print(f"Progress: {processed_samples}/{total_samples} samples processed ({processed_samples/total_samples:.2%})")
 
     def create_dataset(self):
         """
@@ -379,8 +394,7 @@ class ImageLoader:
         )
         return dataset
 
-    def load_data(self, split, 
-                  study_ids: list[str] = None):
+    def load_data(self, split, study_ids: list[str] = None):
         """
         Load and prepare the data for training and validation.
 
@@ -388,35 +402,73 @@ class ImageLoader:
             tuple: Training dataset and validation dataset.
             Each dataset will have image and label tensors.
         """
-        # Filter the label dataframe based on the split
-        if split == "train" or split == "val" or split == "test":
-            self.split = split
-        else:
-            raise ValueError(f"Unknown split: {split}, correct values are: train, val, test")
-        
+        self.split = split
         if study_ids is not None:
             self.study_ids = study_ids
-
-        # Create the dataset
         dataset = self.create_dataset()
-        print("Dataset is created, setting batch size")
-
         if self.batch_size:
-            print("Batching dataset to :", self.batch_size)
             dataset = dataset.batch(self.batch_size)
-
         else:
-            print(
-                "Batching dataset to default defined in constants:",
-                constants.BATCH_SIZE,
-            )
             dataset = dataset.batch(constants.BATCH_SIZE)
-
-        print("Dataset created, you can now iterate over the dataset")
-
         return dataset
+        # # Filter the label dataframe based on the split
+        # if split == "train" or split == "val" or split == "test":
+        #     self.split = split
+        # else:
+        #     raise ValueError(f"Unknown split: {split}, correct values are: train, val, test")
+        
+        # if study_ids is not None:
+        #     self.study_ids = study_ids
 
+        # # Create the dataset
+        # dataset = self.create_dataset()
+        # print("Dataset is created, setting batch size")
 
+        # if self.batch_size:
+        #     print("Batching dataset to :", self.batch_size)
+        #     dataset = dataset.batch(self.batch_size)
+
+        # else:
+        #     print(
+        #         "Batching dataset to default defined in constants:",
+        #         constants.BATCH_SIZE,
+        #     )
+        #     dataset = dataset.batch(constants.BATCH_SIZE)
+
+        # print("Dataset created, you can now iterate over the dataset")
+
+        # return dataset
+
+    # Add this method to ImageLoader class
+    def load_test_data(self, test_image_dir):
+        """
+        Load and preprocess images from the test directory for prediction.
+
+        Args:
+            test_image_dir (str): Directory containing test images.
+
+        Returns:
+            tf.data.Dataset: Dataset of preprocessed images.
+        """
+        def generator():
+            for study_id in os.listdir(test_image_dir):
+                study_dir = os.path.join(test_image_dir, study_id)
+                for series_id in os.listdir(study_dir):
+                    series_dir = os.path.join(study_dir, series_id)
+                    images = sorted([os.path.join(series_dir, f) for f in os.listdir(series_dir) if f.endswith(".dcm")])
+                    if not images:
+                        continue
+                    img_tensor = self._preprocess_image(study_id, series_id)
+                    yield img_tensor
+
+        dataset = tf.data.Dataset.from_generator(
+            generator,
+            output_signature=tf.TensorSpec(shape=(192, self.roi_size[0], self.roi_size[1], 3), dtype=tf.float32)
+        )
+        test_dataset = dataset.batch(self.batch_size)
+        return test_dataset
+
+    
 # Usage example (commented out):
 # image_loader = ImageLoader(label_coordinates_csv='label_coordinates.csv', labels_csv='labels.csv',
 #                               image_dir='images', roi_size=(224, 224), batch_size=32)
