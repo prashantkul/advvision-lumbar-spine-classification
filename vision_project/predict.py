@@ -68,7 +68,11 @@ class VisionModelPredictor:
         predictions = []
         study_ids = []
 
+        total_studies = len(test_study_ids)
+        study_counter = 0
+
         for study_id in test_study_ids:
+            study_counter += 1
             study_dir = os.path.join(test_images_dir, study_id)
             for series_id in os.listdir(study_dir):
                 series_dir = os.path.join(study_dir, series_id)
@@ -79,6 +83,10 @@ class VisionModelPredictor:
                 prediction = self.model.predict(np.expand_dims(img_tensor, axis=0))
                 predictions.append(prediction)
                 study_ids.append(study_id)
+
+            # Print progress
+            if study_counter % 10 == 0:  # Print progress every 10 studies
+                print(f"Processed {study_counter}/{total_studies} studies ({study_counter/total_studies:.2%})")
 
         predictions = np.concatenate(predictions, axis=0)
         self.save_predictions(predictions, output_csv, study_ids)
