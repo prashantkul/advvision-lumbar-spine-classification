@@ -303,15 +303,19 @@ class ImageLoader:
     
         total_samples = len(label_coordinates_df)
         processed_samples = 0
-        
-        # This loop iterates until all the rows have beene exahused for the generator
-        while len(label_coordinates_df) > 0:
-            print("*" * 100)
 
-            # Filter the dataframe based on the split requested in the generator, only return those rows
-            if self.split in ["train", "val", "test"]:
-                label_coordinates_df = label_coordinates_df[
-                    label_coordinates_df["split"] == self.split]
+        # Filter the dataframe based on the split requested in the generator, only return those rows
+        if self.split in ["train", "val", "test"]:
+            label_coordinates_df = label_coordinates_df[
+                label_coordinates_df["split"] == self.split]
+            
+        # This loop iterates until all the rows have beene exahused for the generator
+        while True:
+            if len(label_coordinates_df) == 0:
+                print("All samples processed. Raising StopIteration.")
+                raise StopIteration
+            
+            print("*" * 100)
             
             # randomly select one row from the dataframe to return
             row = label_coordinates_df.sample(n=1)
@@ -358,7 +362,7 @@ class ImageLoader:
             #print progress after every 10 samples
             processed_samples += 1
             if processed_samples % 10 == 0:  # Print progress every 10 samples
-                print(f"Progress: {processed_samples}/{total_samples} samples processed ({processed_samples/total_samples:.2%})")
+                print(f"## Progress check : {processed_samples}/{total_samples} samples processed ({processed_samples/total_samples:.2%})")
 
     def create_dataset(self):
         """
