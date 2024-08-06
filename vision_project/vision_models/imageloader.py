@@ -156,14 +156,14 @@ class ImageLoader:
             # Apply Gaussian attention to original image using the single x and y for all images
             attended_img = self.apply_gaussian_attention(original_img, x, y)
             
-            # Visualize (for the first 5 images in the series)
-            if print_images:
-                if idx < 5:
-                    current_dir = os.getcwd()
-                    vis_dir = os.path.join(current_dir, "visualizations", f"{study_id}_{series_id}")
-                    os.makedirs(vis_dir, exist_ok=True)
-                    vis_filename = os.path.join(vis_dir, f"attention_vis_{idx}.png")
-                    self.visualize_attention(original_img, attended_img, x, y, vis_filename)
+            # # Visualize (for the first 5 images in the series)
+            # if print_images:
+            #     if idx < 5:
+            #         current_dir = os.getcwd()
+            #         vis_dir = os.path.join(current_dir, "visualizations", f"{study_id}_{series_id}")
+            #         os.makedirs(vis_dir, exist_ok=True)
+            #         vis_filename = os.path.join(vis_dir, f"attention_vis_{idx}.png")
+            #         self.visualize_attention(original_img, attended_img, x, y, vis_filename)
             
             # Convert to tensor and preprocess
             img = tf.convert_to_tensor(attended_img, dtype=tf.float32)
@@ -314,7 +314,10 @@ class ImageLoader:
                     label_coordinates_df["split"] == self.split]
             
             # randomly select one row from the dataframe to return
-            row = label_coordinates_df.sample(n=1)  
+            row = label_coordinates_df.sample(n=1)
+            
+            # Remove the selected row from the DataFrame
+            label_coordinates_df = label_coordinates_df.drop(row.index) 
 
             study_id = row["study_id"].values[0]
             series_id = row["series_id"].values[0]
@@ -351,6 +354,11 @@ class ImageLoader:
             #print("Returning feature and label tensors")
           
             yield img_tensor, one_hot_vector_array
+            
+            #print progress after every 10 samples
+            processed_samples += 1
+            if processed_samples % 10 == 0:  # Print progress every 10 samples
+                print(f"Progress: {processed_samples}/{total_samples} samples processed ({processed_samples/total_samples:.2%})")
 
     def create_dataset(self):
         """
