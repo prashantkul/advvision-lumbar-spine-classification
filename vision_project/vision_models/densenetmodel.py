@@ -3,7 +3,22 @@ from keras.models import Model
 from tqdm.keras import TqdmCallback
 from keras.applications import DenseNet121
 from keras.optimizers import Adam
+import os
+class EpochLogger(tf.keras.callbacks.Callback):
+    def __init__(self, log_dir='logs'):
+        super(EpochLogger, self).__init__()
+        self.log_dir = log_dir
+        os.makedirs(log_dir, exist_ok=True)
+        self.log_file = os.path.join(log_dir, 'epoch_logs.txt')
 
+    def on_epoch_end(self, epoch, logs=None):
+        # Logs contain metrics like loss, accuracy, etc.
+        logs = logs or {}
+        with open(self.log_file, 'a') as f:
+            log_entry = f"Epoch {epoch + 1}: " + ", ".join(f"{k}: {v:.4f}" for k, v in logs.items())
+            f.write(log_entry + "\n")
+        print(log_entry)
+        
 class ModelTrainer:
     def __init__(self, model):
         self.model = model
@@ -42,7 +57,9 @@ class ModelTrainer:
             monitor="val_loss", factor=0.5, patience=3, min_lr=0.00001, verbose=1
         )
 
-        self.callbacks = [early_stopping, model_checkpoint, reduce_lr]
+        epoch_logger = EpochLogger(log_dir='training_logs')
+        
+        self.callbacks = [early_stopping, model_checkpoint, reduce_lr, epoch_logger]
 
         # Train the model
         if class_balancing_weights is not None:
