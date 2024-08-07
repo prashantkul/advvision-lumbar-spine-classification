@@ -42,8 +42,19 @@ class ImageLoader:
 
         if mode != 'predict':
             self.study_id_to_labels = self._load_labels()
+            self.label_list = self._load_label_list()
             self._analyze_splits()
         
+    def _load_label_list(self):
+        """
+        Load the list of human-readable labels from the labels CSV file.
+
+        Returns:
+            list: A list of human-readable labels.
+        """
+        labels_df = pd.read_csv(self.labels_csv)
+        return labels_df.columns[1:].tolist()
+    
     def _load_labels(self):
         """
         Load labels from CSV file into a dictionary.

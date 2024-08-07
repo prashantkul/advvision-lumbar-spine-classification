@@ -6,6 +6,9 @@ from vision_models.densenetmodel import DenseNetVisionModel
 import vision_models.constants as constants
 import pandas as pd
 import numpy as np
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 class VisionModelPredictor:
     def __init__(self, model_path):
@@ -43,15 +46,71 @@ class VisionModelPredictor:
             return self.val_image_loader.load_data(split)
         else:
             return self.test_image_loader.load_test_data(constants.TEST_DATA_PATH)
+        
+    def save_evaluation_results(self, evaluation_results, output_csv):
+        evaluation_df = pd.DataFrame([evaluation_results], columns=['loss', 'accuracy'])
+        evaluation_df.to_csv(output_csv, index=False)
+        print(f"Evaluation results saved to {output_csv}")
+
+    # def evaluate(self, val_dataset, output_csv):
+    #     # Count the number of records in the validation dataset
+    #     # val_count = sum(1 for _ in val_dataset)
+    #     # print(f"Number of records in the validation dataset: {val_count}")
+
+    #     results = self.model.evaluate(val_dataset)
+    #     print(f"Evaluation results: {results}")
+    #     self.save_evaluation_results(results, output_csv)
+    #     return results
 
     def evaluate(self, val_dataset):
-        # Count the number of records in the validation dataset
-        # val_count = sum(1 for _ in val_dataset)
-        # print(f"Number of records in the validation dataset: {val_count}")
+        y_true = []
+        y_pred = []
 
-        results = self.model.evaluate(val_dataset)
-        print(f"Evaluation results: {results}")
-        return results
+        for images, labels in val_dataset:
+            predictions = self.model.predict(images)
+            y_true.extend(np.argmax(labels.numpy(), axis=1))
+            y_pred.extend(np.argmax(predictions, axis=1))
+
+        # Compute additional metrics
+        report = classification_report(y_true, y_pred, output_dict=True)
+        confusion = confusion_matrix(y_true, y_pred)
+        roc_auc = roc_auc_score(tf.keras.utils.to_categorical(y_true, num_classes=self.num_classes), 
+                                tf.keras.utils.to_categorical(y_pred, num_classes=self.num_classes), multi_class='ovr')
+
+        # Print evaluation results
+        print("Classification Report:")
+        print(report)
+        print("Confusion Matrix:")
+        print(confusion)
+        print("ROC AUC Score:")
+        print(roc_auc)
+
+        # Save evaluation results to CSV
+        evaluation_results = {
+            "loss": report["weighted avg"]["precision"],  # Example, replace with actual loss
+            "accuracy": report["accuracy"],
+            "precision": report["weighted avg"]["precision"],
+            "recall": report["weighted avg"]["recall"],
+            "f1_score": report["weighted avg"]["f1-score"],
+            "roc_auc": roc_auc
+        }
+
+        evaluation_df = pd.DataFrame([evaluation_results])
+        evaluation_df.to_csv("evaluation_results.csv", index=False)
+        print("Evaluation results saved to evaluation_results.csv")
+
+        # Save confusion matrix as an image
+        plt.figure(figsize=(10, 8))
+        sns.heatmap(confusion, annot=True, fmt="d", cmap="Blues")
+        plt.xlabel("Predicted")
+        plt.ylabel("Actual")
+        plt.title("Confusion Matrix")
+        plt.savefig("confusion_matrix.png")
+        plt.close()
+        print("Confusion matrix saved to confusion_matrix.png")
+
+        return report, confusion, roc_auc
+
 
     def run_predictions(self, test_dataset):
         predictions = self.model.predict(test_dataset)
@@ -60,8 +119,8 @@ class VisionModelPredictor:
     def save_predictions(self, predictions, output_csv, study_ids, series_ids):
         # predictions_df = pd.DataFrame(predictions, columns=[f'class_{i}' for i in range(predictions.shape[1])])
         predictions_df = pd.DataFrame(predictions, columns=self.human_readable_labels)
-        predictions_df.insert(0, 'series_id', series_ids)
         predictions_df.insert(0, 'study_id', study_ids)
+        predictions_df.insert(0, 'series_id', series_ids)
         predictions_df.to_csv(output_csv, index=False)
         print(f"Predictions saved to {output_csv}")
 
@@ -189,6 +248,7 @@ def count_studies_series_images(image_dir, split=None, label_coordinates_csv=Non
 def main():
     model_path = constants.DENSENET_MODEL
     output_csv = 'predictions.csv'
+    evaluation_csv = 'evaluation_results.csv'
 
     # # Print study, series, and image counts for train, validation, and prediction steps
     # train_study_count, train_series_count, train_image_count = count_studies_series_images(constants.TRAIN_DATA_PATH, split='train', label_coordinates_csv=constants.TRAIN_LABEL_CORD_PATH)
@@ -205,7 +265,8 @@ def main():
     val_dataset = predictor.prepare_data('val')  # Using 'val' split for evaluation
     # print(f"Number of records (tensors) in the validation dataset: {len(list(val_dataset))}")
     print("Evaluating on validation dataset")
-    predictor.evaluate(val_dataset)
+    # predictor.evaluate(val_dataset, evaluation_csv)
+    report, confusion, roc_auc = predictor.evaluate(val_dataset)
 
     # Prediction
     print("Running predictions on test dataset")
