@@ -7,6 +7,7 @@ import tensorflow as tf
 import vision_models.constants as constants
 from typing import Any, Iterator, Tuple
 import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
 
 class ImageLoader:
     """
@@ -184,33 +185,71 @@ class ImageLoader:
         print(f"Resulting preprocessed image tensor shape: {result.shape}")
         return result
 
-    def _create_split(self, df):
+    from sklearn.model_selection import train_test_split
+
+    def _create_split(self, data):
         """
-        Create a split of the data based on the split column.
+        Create a split of the data based on the composite key.
 
         Args:
-            dataframe (pd.DataFrame): Input dataframe.
+            data (pd.DataFrame): Input dataframe.
 
         Returns:
-            A dataframe containing a new column for split.
+            pd.DataFrame: Dataframe with a new 'split' column indicating the train, val, or test set.
         """        
-        # Calculate split indices
-        train_end = int(len(df) * constants.TRAIN_SPLIT)
-        val_end = train_end + int(len(df) * constants.VAL_SPLIT)
+        # Combine condition and level to form a unique class identifier
+        data['class'] = data['condition'] + '_' + data['level']
 
-        # Shuffle the DataFrame
-        df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+        # Create a composite key for stratification
+        data['composite_key'] = data['study_id'].astype(str) + '_' + \
+                                data['series_id'].astype(str) + '_' + \
+                                data['condition'] + '_' + data['level']
 
-        # Initialize the 'split' column
-        df["split"] = None
+        # Calculate the class distribution based on the composite key
+        class_distribution = data['composite_key'].value_counts()
+
+        # Perform stratified sampling based on the composite key
+        train_ids, test_ids = train_test_split(
+            class_distribution.index,
+            test_size=0.2,
+            stratify=class_distribution.values,
+            random_state=42
+        )
+
+        train_ids, val_ids = train_test_split(
+            train_ids,
+            test_size=0.25,  # 0.25 of the 0.8 train set size results in 0.2 validation set size
+            stratify=class_distribution[train_ids].values,
+            random_state=42
+        )
+
+        # Split the data based on these IDs
+        train_split = data[data['composite_key'].isin(train_ids)].copy()
+        val_split = data[data['composite_key'].isin(val_ids)].copy()
+        test_split = data[data['composite_key'].isin(test_ids)].copy()
 
         # Assign split labels
-        df.loc[:train_end, "split"] = "train"
-        df.loc[train_end:val_end, "split"] = "val"
-        df.loc[val_end:, "split"] = "test"
+        train_split['split'] = 'train'
+        val_split['split'] = 'val'
+        test_split['split'] = 'test'
 
-        return df
+        # Concatenate all splits
+        split_data = pd.concat([train_split, val_split, test_split])
 
+        # Drop the temporary columns
+        split_data.drop(columns=['class', 'composite_key'], inplace=True)
+
+        print("Train Set Shape:", train_split.shape)
+        print("Validation Set Shape:", val_split.shape)
+        print("Test Set Shape:", test_split.shape)
+        
+        # Save splits to CSV files
+        train_split.to_csv(f'train_split.csv', index=False)
+        val_split.to_csv(f'val_split.csv', index=False)
+        test_split.to_csv(f'test_split.csv', index=False)
+
+        return split_data
+            
     def _analyze_splits(self):
         """ Analyze the splits of the data. """
         label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
@@ -299,7 +338,7 @@ class ImageLoader:
         label_coordinates_df = self._create_split(label_coordinates_df)
         
         # Sample 40% of the data
-        label_coordinates_df = self._sample_dataframe(label_coordinates_df, fraction=constants.TRAIN_SAMPLE_RATE)
+        #label_coordinates_df = self._sample_dataframe(label_coordinates_df, fraction=constants.TRAIN_SAMPLE_RATE)
     
         total_samples = len(label_coordinates_df)
         processed_samples = 0
@@ -308,6 +347,10 @@ class ImageLoader:
         if self.split in ["train", "val", "test"]:
             label_coordinates_df = label_coordinates_df[
                 label_coordinates_df["split"] == self.split]
+        
+        # Shuffle if the split is "train"
+        if self.split == "train":
+            label_coordinates_df = label_coordinates_df.sample(frac=1, random_state=42).reset_index(drop=True)
             
         # This loop iterates until all the rows have beene exahused for the generator
         while True:
