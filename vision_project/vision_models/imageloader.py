@@ -347,8 +347,8 @@ class ImageLoader:
         # Shuffle if the split is "train"
         if self.split == "train":
             label_coordinates_df = label_coordinates_df.sample(frac=1, random_state=42).reset_index(drop=True)
-        
-        total_samples = len(label_coordinates_df)
+            total_samples = len(label_coordinates_df)
+       
         processed_samples = 0
         
         # This loop iterates until all the rows have beene exahused for the generator
