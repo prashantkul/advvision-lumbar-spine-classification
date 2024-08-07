@@ -246,6 +246,10 @@ class ImageLoader:
         human_readable_labels = [label_list[i] for i in indices_with_ones]
         # Output the labels
         print("Human-readable labels:", human_readable_labels)
+
+    def get_human_readable_labels(self):
+        return self.label_list
+
     
     def _filter_df(self, df, study_ids):
         print(f"Label coordinates DF will be filtered based on study_ids: {study_ids}")

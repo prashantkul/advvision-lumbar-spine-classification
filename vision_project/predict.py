@@ -30,6 +30,7 @@ class VisionModelPredictor:
         self.input_shape = (self.batch_size, 192, 224, 224, 3)
         self.num_classes = 25
         self.model = self.load_model(model_path)
+        self.human_readable_labels = self.val_image_loader.get_human_readable_labels()
 
     def load_model(self, model_path):
         model = DenseNetVisionModel(num_classes=self.num_classes, input_shape=self.input_shape, weights=None)
@@ -56,8 +57,10 @@ class VisionModelPredictor:
         predictions = self.model.predict(test_dataset)
         return predictions
 
-    def save_predictions(self, predictions, output_csv, study_ids):
-        predictions_df = pd.DataFrame(predictions, columns=[f'class_{i}' for i in range(predictions.shape[1])])
+    def save_predictions(self, predictions, output_csv, study_ids, series_ids):
+        # predictions_df = pd.DataFrame(predictions, columns=[f'class_{i}' for i in range(predictions.shape[1])])
+        predictions_df = pd.DataFrame(predictions, columns=self.human_readable_labels)
+        predictions_df.insert(0, 'series_id', series_ids)
         predictions_df.insert(0, 'study_id', study_ids)
         predictions_df.to_csv(output_csv, index=False)
         print(f"Predictions saved to {output_csv}")
@@ -92,11 +95,43 @@ class VisionModelPredictor:
     #     self.save_predictions(predictions, output_csv, study_ids)
     #     print(f"Total records processed: {len(study_ids)}")
 
+    # def predict(self, output_csv):
+    #     test_images_dir = constants.TEST_DATA_PATH
+    #     test_study_ids = os.listdir(test_images_dir)
+    #     predictions = []
+    #     study_ids = []
+    #     counter = 0
+
+    #     for study_id in test_study_ids:
+    #         study_dir = os.path.join(test_images_dir, study_id)
+    #         for series_id in os.listdir(study_dir):
+    #             series_dir = os.path.join(study_dir, series_id)
+    #             images = sorted([os.path.join(series_dir, f) for f in os.listdir(series_dir) if f.endswith(".dcm")])
+    #             if not images:
+    #                 continue
+    #             img_tensor = self.test_image_loader._preprocess_image(study_id, series_id, x=0, y=0)  # Dummy x, y for prediction
+    #             prediction = self.model.predict(np.expand_dims(img_tensor, axis=0))
+    #             predictions.append(prediction)
+    #             study_ids.append(study_id)
+    #             counter += 1
+
+    #             if counter % 10 == 0:
+    #                 temp_output_csv = f'{output_csv.split(".")[0]}_part_{counter // 10}.csv'
+    #                 self.save_predictions(np.concatenate(predictions, axis=0), temp_output_csv, study_ids)
+    #                 predictions = []
+    #                 study_ids = []
+    #                 series_ids = []
+
+    #     # Save any remaining predictions
+    #     if predictions:
+    #         self.save_predictions(np.concatenate(predictions, axis=0), output_csv, study_ids)
+
     def predict(self, output_csv):
         test_images_dir = constants.TEST_DATA_PATH
         test_study_ids = os.listdir(test_images_dir)
         predictions = []
         study_ids = []
+        series_ids = []
         counter = 0
 
         for study_id in test_study_ids:
@@ -110,17 +145,19 @@ class VisionModelPredictor:
                 prediction = self.model.predict(np.expand_dims(img_tensor, axis=0))
                 predictions.append(prediction)
                 study_ids.append(study_id)
+                series_ids.append(series_id)
                 counter += 1
 
                 if counter % 10 == 0:
                     temp_output_csv = f'{output_csv.split(".")[0]}_part_{counter // 10}.csv'
-                    self.save_predictions(np.concatenate(predictions, axis=0), temp_output_csv, study_ids)
+                    self.save_predictions(np.concatenate(predictions, axis=0), temp_output_csv, study_ids, series_ids)
                     predictions = []
                     study_ids = []
+                    series_ids = []
 
         # Save any remaining predictions
         if predictions:
-            self.save_predictions(np.concatenate(predictions, axis=0), output_csv, study_ids)
+            self.save_predictions(np.concatenate(predictions, axis=0), output_csv, study_ids, series_ids)
 
 
 def count_studies_series_images(image_dir, split=None, label_coordinates_csv=None):
