@@ -79,7 +79,7 @@ class ModelTrainer:
         step_counter = StepCounter()
 
         
-        self.callbacks = [early_stopping, model_checkpoint, reduce_lr, epoch_logger,step_counter]
+        self.callbacks = [early_stopping, model_checkpoint, reduce_lr]
 
         # Train the model
         fit_args = {
