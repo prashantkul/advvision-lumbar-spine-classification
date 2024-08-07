@@ -4,7 +4,7 @@ from vision_models import constants
 from vision_models.imageloader import ImageLoader
 from vision_models.densenetmodel import DenseNetVisionModel, ModelTrainer
 import pickle
-
+import os
 class VisionModelPipeline:
 
     def __init__(self):
@@ -67,6 +67,20 @@ class VisionModelPipeline:
     def train_model(self, model, train_dataset, val_dataset):
         with self.strategy.scope():
             trainer = ModelTrainer(model)
+            
+            # Check for existing checkpoints in the current directory
+            checkpoint_dir = os.getcwd()
+            checkpoint_files = [f for f in os.listdir(checkpoint_dir) if f.startswith('model_epoch_') and f.endswith('.weights.h5')]
+            
+            # Sort the checkpoint files by epoch number
+            checkpoint_files.sort(key=lambda f: int(f.split('_')[-1].split('.')[0]))
+            
+            # Load the latest checkpoint if it exists
+            if checkpoint_files:
+                latest_checkpoint = os.path.join(checkpoint_dir, checkpoint_files[-1])
+                print(f"Loading existing checkpoint from {latest_checkpoint}")
+                model.load_weights(latest_checkpoint)
+            
             train_steps_per_epoch = 29214 // self.batch_size # to fix the training "End of sequence" error
             validation_steps = 9739 // self.batch_size 
             history = trainer.train(train_dataset, val_dataset, epochs=self.epochs, 

@@ -58,6 +58,7 @@ class ModelTrainer:
         steps_per_epoch=None,
         validation_steps=None,
         class_balancing_weights=None,
+        load_checkpoint=None
     ):
         # Define callbacks
         early_stopping = tf.keras.callbacks.EarlyStopping(
@@ -65,19 +66,21 @@ class ModelTrainer:
         )
 
         model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
-            filepath="best_model.weights.h5",
+            filepath="model_epoch_{epoch:03d}.weights.h5",
             save_weights_only=True,  # Save only the weights (not the entire model)
-            save_freq='epoch' # Save every epoch
+            save_freq='epoch',  # Save every epoch
+            period=1,  # Save every epoch
+            verbose=1  # Print a message when saving
         )
 
         reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
             monitor="val_loss", factor=0.5, patience=3, min_lr=0.00001, verbose=1
         )
 
-        epoch_logger = EpochLogger(log_dir='training_logs')
-        
-        step_counter = StepCounter()
-
+        # Load existing checkpoint if specified
+        if load_checkpoint:
+            self.model.load_weights(load_checkpoint)
+            print(f"Loaded checkpoint from {load_checkpoint}")
         
         self.callbacks = [early_stopping, model_checkpoint, reduce_lr]
 
