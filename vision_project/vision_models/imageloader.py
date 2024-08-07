@@ -140,11 +140,11 @@ class ImageLoader:
     def _preprocess_image(self, study_id, series_id, x, y, print_images=False):
         """ Preprocess images for a given study and series. """
         
-        print(f"Preprocessing images for study_id: {study_id}, series_id: {series_id}")
-        print(f"Applying Gaussian attention at coordinates: ({x}, {y})")
+        #print(f"Preprocessing images for study_id: {study_id}, series_id: {series_id}")
+        #print(f"Applying Gaussian attention at coordinates: ({x}, {y})")
         
         series_dir = f"{self.image_dir}/{study_id}/{series_id}"
-        print(f"Reading images from {series_dir}")
+        #print(f"Reading images from {series_dir}")
         images = []           
         
         # Get sorted list of DICOM files
@@ -175,17 +175,16 @@ class ImageLoader:
             images.append(img)
 
         # Pad images to 192 if necessary
-        print(f"Number of images in series: {len(images)}")
+        #print(f"Number of images in series: {len(images)}")
         if len(images) < 192:
-            print(f"Padding tensor to 192 images")
+            #print(f"Padding tensor to 192 images")
             padding = tf.zeros((192 - len(images), *self.roi_size, 3), dtype=tf.float32)
             images = tf.concat([images, padding], axis=0)
 
         result = tf.stack(images)
-        print(f"Resulting preprocessed image tensor shape: {result.shape}")
+        #print(f"Resulting preprocessed image tensor shape: {result.shape}")
         return result
 
-    from sklearn.model_selection import train_test_split
 
     def _create_split(self, data):
         """
@@ -265,7 +264,7 @@ class ImageLoader:
         # Select the corresponding labels from label_list
         human_readable_labels = [label_list[i] for i in indices_with_ones]
         # Output the labels
-        print("Human-readable labels:", human_readable_labels)
+        #print("Human-readable labels:", human_readable_labels)
     
     def _filter_df(self, df, study_ids):
         print(f"Label coordinates DF will be filtered based on study_ids: {study_ids}")
@@ -340,9 +339,6 @@ class ImageLoader:
         # Sample 40% of the data
         #label_coordinates_df = self._sample_dataframe(label_coordinates_df, fraction=constants.TRAIN_SAMPLE_RATE)
     
-        total_samples = len(label_coordinates_df)
-        processed_samples = 0
-
         # Filter the dataframe based on the split requested in the generator, only return those rows
         if self.split in ["train", "val", "test"]:
             label_coordinates_df = label_coordinates_df[
@@ -351,7 +347,10 @@ class ImageLoader:
         # Shuffle if the split is "train"
         if self.split == "train":
             label_coordinates_df = label_coordinates_df.sample(frac=1, random_state=42).reset_index(drop=True)
-            
+        
+        total_samples = len(label_coordinates_df)
+        processed_samples = 0
+        
         # This loop iterates until all the rows have beene exahused for the generator
         while True:
             if len(label_coordinates_df) == 0:
@@ -394,7 +393,7 @@ class ImageLoader:
             one_hot_vector = [0.0] * len(self.label_list)
             one_hot_vector[label_vector] = 1.0
 
-            print(f"One hot enocded label vector generated: {one_hot_vector}")
+            #print(f"One hot enocded label vector generated: {one_hot_vector}")
             self._create_human_readable_label(one_hot_vector, self.label_list)
 
             one_hot_vector_array = np.array(one_hot_vector, dtype=np.float32)
