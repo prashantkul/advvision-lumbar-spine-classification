@@ -20,7 +20,7 @@ class VisionModelPredictor:
             labels_csv=constants.TRAIN_LABEL_PATH,
             roi_size=(224, 224),
             batch_size=self.batch_size,
-            mode ="val"
+            mode ="test"
         )
         self.test_image_loader = ImageLoader(
             image_dir=constants.TEST_DATA_PATH,
@@ -42,74 +42,132 @@ class VisionModelPredictor:
         return model
 
     def prepare_data(self, split):
-        if split == 'val':
+        if split == 'test':
             return self.val_image_loader.load_data(split)
         else:
             return self.test_image_loader.load_test_data(constants.TEST_DATA_PATH)
         
     def save_evaluation_results(self, evaluation_results, output_csv):
-        evaluation_df = pd.DataFrame([evaluation_results], columns=['loss', 'accuracy'])
-        evaluation_df.to_csv(output_csv, index=False)
+        evaluation_df2 = pd.DataFrame([evaluation_results], columns=['loss', 'accuracy'])
+        evaluation_df = evaluation_results
+        print(f"Evaluation results: {evaluation_results}")
+        evaluation_df2.to_csv(output_csv, index=False)
         print(f"Evaluation results saved to {output_csv}")
 
-    # def evaluate(self, val_dataset, output_csv):
-    #     # Count the number of records in the validation dataset
-    #     # val_count = sum(1 for _ in val_dataset)
-    #     # print(f"Number of records in the validation dataset: {val_count}")
+    def evaluate(self, val_dataset, output_csv):
+        # Count the number of records in the validation dataset
+        # val_count = sum(1 for _ in val_dataset)
+        # print(f"Number of records in the validation dataset: {val_count}")
 
-    #     results = self.model.evaluate(val_dataset)
-    #     print(f"Evaluation results: {results}")
-    #     self.save_evaluation_results(results, output_csv)
-    #     return results
+        results = self.model.evaluate(val_dataset)
+        print(f"Evaluation results: {results}")
+        self.save_evaluation_results(results, output_csv)
+        return results
 
-    def evaluate(self, val_dataset):
-        y_true = []
-        y_pred = []
+    # def evaluate(self, val_dataset):
+    #     y_true = []
+    #     y_pred = []
 
-        for images, labels in val_dataset:
-            predictions = self.model.predict(images)
-            y_true.extend(np.argmax(labels.numpy(), axis=1))
-            y_pred.extend(np.argmax(predictions, axis=1))
+    #     for images, labels in val_dataset:
+    #         predictions = self.model.predict(images)
+    #         y_true.extend(np.argmax(labels.numpy(), axis=1))
+    #         y_pred.extend(np.argmax(predictions, axis=1))
 
-        # Compute additional metrics
-        report = classification_report(y_true, y_pred, output_dict=True)
-        confusion = confusion_matrix(y_true, y_pred)
-        roc_auc = roc_auc_score(tf.keras.utils.to_categorical(y_true, num_classes=self.num_classes), 
-                                tf.keras.utils.to_categorical(y_pred, num_classes=self.num_classes), multi_class='ovr')
+    #     # Compute additional metrics
+    #     report = classification_report(y_true, y_pred, output_dict=True)
+    #     confusion = confusion_matrix(y_true, y_pred)
+    #     roc_auc = roc_auc_score(tf.keras.utils.to_categorical(y_true, num_classes=self.num_classes), 
+    #                             tf.keras.utils.to_categorical(y_pred, num_classes=self.num_classes), multi_class='ovr')
 
-        # Print evaluation results
-        print("Classification Report:")
-        print(report)
-        print("Confusion Matrix:")
-        print(confusion)
-        print("ROC AUC Score:")
-        print(roc_auc)
+    #     # Print evaluation results
+    #     print("Classification Report:")
+    #     print(report)
+    #     print("Confusion Matrix:")
+    #     print(confusion)
+    #     print("ROC AUC Score:")
+    #     print(roc_auc)
 
-        # Save evaluation results to CSV
-        evaluation_results = {
-            "loss": report["weighted avg"]["precision"],  # Example, replace with actual loss
-            "accuracy": report["accuracy"],
-            "precision": report["weighted avg"]["precision"],
-            "recall": report["weighted avg"]["recall"],
-            "f1_score": report["weighted avg"]["f1-score"],
-            "roc_auc": roc_auc
-        }
+    #     # Save evaluation results to CSV
+    #     evaluation_results = {
+    #         "loss": report["weighted avg"]["precision"],  # Example, replace with actual loss
+    #         "accuracy": report["accuracy"],
+    #         "precision": report["weighted avg"]["precision"],
+    #         "recall": report["weighted avg"]["recall"],
+    #         "f1_score": report["weighted avg"]["f1-score"],
+    #         "roc_auc": roc_auc
+    #     }
 
-        evaluation_df = pd.DataFrame([evaluation_results])
-        evaluation_df.to_csv("evaluation_results.csv", index=False)
-        print("Evaluation results saved to evaluation_results.csv")
+    #     evaluation_df = pd.DataFrame([evaluation_results])
+    #     evaluation_df.to_csv("evaluation_results.csv", index=False)
+    #     print("Evaluation results saved to evaluation_results.csv")
 
-        # Save confusion matrix as an image
-        plt.figure(figsize=(10, 8))
-        sns.heatmap(confusion, annot=True, fmt="d", cmap="Blues")
-        plt.xlabel("Predicted")
-        plt.ylabel("Actual")
-        plt.title("Confusion Matrix")
-        plt.savefig("confusion_matrix.png")
-        plt.close()
-        print("Confusion matrix saved to confusion_matrix.png")
+    #     # Save confusion matrix as an image
+    #     plt.figure(figsize=(10, 8))
+    #     sns.heatmap(confusion, annot=True, fmt="d", cmap="Blues")
+    #     plt.xlabel("Predicted")
+    #     plt.ylabel("Actual")
+    #     plt.title("Confusion Matrix")
+    #     plt.savefig("confusion_matrix.png")
+    #     plt.close()
+    #     print("Confusion matrix saved to confusion_matrix.png")
 
-        return report, confusion, roc_auc
+    #     return report, confusion, roc_auc
+
+    # def evaluate(self, val_dataset):
+    #     y_true = []
+    #     y_pred = []
+    #     losses = []
+    #     accuracies = []
+
+    #     for images, labels in val_dataset:
+    #         results = self.model.evaluate(images, labels, verbose=0)
+    #         loss, accuracy = results[0], results[1]
+    #         predictions = self.model.predict(images)
+    #         y_true.extend(np.argmax(labels.numpy(), axis=1))
+    #         y_pred.extend(np.argmax(predictions, axis=1))
+    #         losses.append(loss)
+    #         accuracies.append(accuracy)
+
+    #     # Compute additional metrics
+    #     report = classification_report(y_true, y_pred, output_dict=True)
+    #     confusion = confusion_matrix(y_true, y_pred)
+    #     roc_auc = roc_auc_score(tf.keras.utils.to_categorical(y_true, num_classes=self.num_classes), 
+    #                             tf.keras.utils.to_categorical(y_pred, num_classes=self.num_classes), multi_class='ovr')
+
+    #     # Print evaluation results
+    #     print("Classification Report:")
+    #     print(report)
+    #     print("Confusion Matrix:")
+    #     print(confusion)
+    #     print("ROC AUC Score:")
+    #     print(roc_auc)
+
+    #     # Save evaluation results to CSV
+    #     evaluation_results = {
+    #         "loss": np.mean(losses),
+    #         "accuracy": np.mean(accuracies),
+    #         "precision": report["weighted avg"]["precision"],
+    #         "recall": report["weighted avg"]["recall"],
+    #         "f1_score": report["weighted avg"]["f1-score"],
+    #         "roc_auc": roc_auc
+    #     }
+
+    #     evaluation_df = pd.DataFrame([evaluation_results])
+    #     evaluation_df.to_csv("evaluation_results.csv", index=False)
+    #     print("Evaluation results saved to evaluation_results.csv")
+
+    #     # Save confusion matrix as an image
+    #     plt.figure(figsize=(10, 8))
+    #     sns.heatmap(confusion, annot=True, fmt="d", cmap="Blues")
+    #     plt.xlabel("Predicted")
+    #     plt.ylabel("Actual")
+    #     plt.title("Confusion Matrix")
+    #     plt.savefig("confusion_matrix.png")
+    #     plt.close()
+    #     print("Confusion matrix saved to confusion_matrix.png")
+
+    #     return report, confusion, roc_auc
+
 
 
     def run_predictions(self, test_dataset):
@@ -262,11 +320,11 @@ def main():
     predictor = VisionModelPredictor(model_path)
 
     # Evaluation
-    val_dataset = predictor.prepare_data('val')  # Using 'val' split for evaluation
+    val_dataset = predictor.prepare_data('test')  # Using 'val' split for evaluation
     # print(f"Number of records (tensors) in the validation dataset: {len(list(val_dataset))}")
     print("Evaluating on validation dataset")
-    # predictor.evaluate(val_dataset, evaluation_csv)
-    report, confusion, roc_auc = predictor.evaluate(val_dataset)
+    predictor.evaluate(val_dataset, evaluation_csv)
+    # report, confusion, roc_auc = predictor.evaluate(val_dataset)
 
     # Prediction
     print("Running predictions on test dataset")
