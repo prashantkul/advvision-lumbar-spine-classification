@@ -308,6 +308,10 @@ class ImageLoader:
             
             The while loop returns unlimited number of feature and label tensors until all rows from the label_coordinates_csv
             file are exhausted.
+            
+            Input: None
+            
+            Output: Iterator[Tuple[tf.Tensor, tf.Tensor]
         
         """
         # read the label_coordinates.csv file       
@@ -335,9 +339,6 @@ class ImageLoader:
 
         # Create a new split column in the dataframe for train, test and validation split.
         label_coordinates_df = self._create_split(label_coordinates_df)
-        
-        # Sample 40% of the data
-        #label_coordinates_df = self._sample_dataframe(label_coordinates_df, fraction=constants.TRAIN_SAMPLE_RATE)
     
         # Filter the dataframe based on the split requested in the generator, only return those rows
         if self.split in ["train", "val", "test"]:
@@ -349,13 +350,7 @@ class ImageLoader:
             label_coordinates_df = label_coordinates_df.sample(frac=1, random_state=42).reset_index(drop=True)
            
         # This loop iterates until all the rows have beene exahused for the generator
-        while True:
-            if len(label_coordinates_df) == 0:
-                print(f"All {self.split} samples processed. Raising StopIteration.")
-                raise StopIteration
-            
-            #print("*" * 100)
-            
+        while len(label_coordinates_df) > 0:            
             # randomly select one row from the dataframe to return
             row = label_coordinates_df.sample(n=1)
             
@@ -368,16 +363,8 @@ class ImageLoader:
             level = row["level"].values[0]
             x = row["x"].values[0]
             y = row["y"].values[0]
-
-            # print(
-            #     f"Going to generate feature for study_id: {study_id}, series_id: {series_id}, condition: {condition}, level: {level}"
-            # )
-
             # Preprocess the image before supplying to the generator.
             img_tensor = self._preprocess_image(study_id, series_id, x , y)
-            # print(
-            #     f"Feature tensor generated, size: {img_tensor.shape}, now generating label"
-            # )
             
             # Create a unique label for the combination of study_id, series_id, condition, and level
             label = f"{row['condition'].values[0].replace(' ', '_').lower()}_{row['level'].values[0].replace('/', '_').lower()}"
@@ -385,13 +372,13 @@ class ImageLoader:
                 label_vector = self.label_list.index(label)
             except ValueError:
                 raise ValueError(f"Label {label} not found in the label list")
-           # print(f"Label generated")
+        
             # Create a one-hot encoded vector
             one_hot_vector = [0.0] * len(self.label_list)
             one_hot_vector[label_vector] = 1.0
 
             #print(f"One hot enocded label vector generated: {one_hot_vector}")
-            self._create_human_readable_label(one_hot_vector, self.label_list)
+            #self._create_human_readable_label(one_hot_vector, self.label_list)
 
             one_hot_vector_array = np.array(one_hot_vector, dtype=np.float32)
             #print("Returning feature and label tensors")
@@ -438,7 +425,7 @@ class ImageLoader:
 
         # Create the dataset
         dataset = self.create_dataset()
-        print("Dataset is created, setting batch size")
+        print(f"{self.split} dataset is created, setting batch size")
 
         if self.batch_size:
             print("Batching dataset to :", self.batch_size)
@@ -450,6 +437,11 @@ class ImageLoader:
                 constants.BATCH_SIZE,
             )
             dataset = dataset.batch(constants.BATCH_SIZE)
+        
+        # Add repeat for validation dataset
+        if self.split == "val":
+            print("Repeating validation dataset")
+            dataset = dataset.repeat()
 
         print("Dataset created, you can now iterate over the dataset")
 

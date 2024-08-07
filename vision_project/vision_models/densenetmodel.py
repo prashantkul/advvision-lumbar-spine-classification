@@ -40,6 +40,8 @@ class ModelTrainer:
         train_generator,
         validation_generator,
         epochs=1,
+        steps_per_epoch=None,
+        validation_steps=None,
         class_balancing_weights=None,
     ):
         # Define callbacks
@@ -62,22 +64,19 @@ class ModelTrainer:
         self.callbacks = [early_stopping, model_checkpoint, reduce_lr, epoch_logger]
 
         # Train the model
-        if class_balancing_weights is not None:
-            return self.model.fit(
-                train_generator,
-                validation_data=validation_generator,
-                epochs=epochs,
-                class_weight=class_balancing_weights,
-                callbacks=self.callbacks,
-            )
-        else:
-            return self.model.fit(
-                train_generator,
-                validation_data=validation_generator,
-                epochs=epochs,
-                callbacks=self.callbacks,
-            )
+        fit_args = {
+            'x': train_generator,
+            'validation_data': validation_generator,
+            'epochs': epochs,
+            'callbacks': self.callbacks,
+            'steps_per_epoch': steps_per_epoch,
+            'validation_steps': validation_steps
+        }
 
+        if class_balancing_weights is not None:
+            fit_args['class_weight'] = class_balancing_weights
+
+        return self.model.fit(**fit_args)
 class DenseNetVisionModel(tf.keras.Model):
     def __init__(self, num_classes, input_shape, weights='imagenet'):
         super(DenseNetVisionModel, self).__init__()
