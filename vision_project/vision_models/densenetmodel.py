@@ -69,7 +69,6 @@ class ModelTrainer:
             filepath="model_epoch_{epoch:03d}.weights.h5",
             save_weights_only=True,  # Save only the weights (not the entire model)
             save_freq='epoch',  # Save every epoch
-            period=1,  # Save every epoch
             verbose=1  # Print a message when saving
         )
 
