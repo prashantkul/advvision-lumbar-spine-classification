@@ -22,7 +22,7 @@ class VisionModelPipeline:
             self.input_shape = (self.batch_size, 192, 224, 224, 3)  # Updated to include the slice dimension
             self.num_classes = 25
             self.weights = 'imagenet'
-            self.epochs = 10
+            self.epochs = 2
 
     def _get_strategy(self):
         gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -67,7 +67,10 @@ class VisionModelPipeline:
     def train_model(self, model, train_dataset, val_dataset):
         with self.strategy.scope():
             trainer = ModelTrainer(model)
-            history = trainer.train(train_dataset, val_dataset, epochs=self.epochs)
+            train_steps_per_epoch = 29214 // self.batch_size # to fix the training "End of sequence" error
+            validation_steps = 9739 // self.batch_size 
+            history = trainer.train(train_dataset, val_dataset, epochs=self.epochs, 
+                                    steps_per_epoch=train_steps_per_epoch, validation_steps=validation_steps)
         return history
 
     def _print_distributed_dataset(self, dataset: tf.distribute.DistributedDataset 
@@ -100,17 +103,15 @@ def main():
     #pipeline.setup_environment()
     study_ids = []
     #study_ids = ['4003253','8785691', '7143189','4646740']
-    train_dataset = pipeline.load_data("train")
     val_dataset = pipeline.load_data("val")
+    train_dataset = pipeline.load_data("train")
     
     #pipeline._print_distributed_dataset(train_dataset, num_elements=1)
 
     # Uncomment code below for training the model
     model = pipeline.build_model()
     history = pipeline.train_model(model, train_dataset, val_dataset)
-    print(history)
-    with open('history.pkl', 'wb') as file:
-        pickle.dump(history.history, file)
+    print(history.history)
 
 if __name__ == "__main__":
     main()

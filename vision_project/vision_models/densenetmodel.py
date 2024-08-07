@@ -18,6 +18,21 @@ class EpochLogger(tf.keras.callbacks.Callback):
             log_entry = f"Epoch {epoch + 1}: " + ", ".join(f"{k}: {v:.4f}" for k, v in logs.items())
             f.write(log_entry + "\n")
         print(log_entry)
+
+class StepCounter(tf.keras.callbacks.Callback):
+            def on_epoch_begin(self, epoch, logs=None):
+                self.train_steps = 0
+                self.val_steps = 0
+            
+            def on_train_batch_end(self, batch, logs=None):
+                self.train_steps += 1
+            
+            def on_test_batch_end(self, batch, logs=None):
+                self.val_steps += 1
+            
+            def on_epoch_end(self, epoch, logs=None):
+                print(f"Epoch {epoch+1} - Actual train steps: {self.train_steps}, Actual val steps: {self.val_steps}")
+
         
 class ModelTrainer:
     def __init__(self, model):
@@ -61,7 +76,10 @@ class ModelTrainer:
 
         epoch_logger = EpochLogger(log_dir='training_logs')
         
-        self.callbacks = [early_stopping, model_checkpoint, reduce_lr, epoch_logger]
+        step_counter = StepCounter()
+
+        
+        self.callbacks = [early_stopping, model_checkpoint, reduce_lr, epoch_logger,step_counter]
 
         # Train the model
         fit_args = {

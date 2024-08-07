@@ -241,13 +241,8 @@ class ImageLoader:
         print("Train Set Shape:", train_split.shape)
         print("Validation Set Shape:", val_split.shape)
         print("Test Set Shape:", test_split.shape)
-        
-        # Save splits to CSV files
-        train_split.to_csv(f'train_split.csv', index=False)
-        val_split.to_csv(f'val_split.csv', index=False)
-        test_split.to_csv(f'test_split.csv', index=False)
 
-        return split_data
+        return train_split, val_split, test_split
             
     def _analyze_splits(self):
         """ Analyze the splits of the data. """
@@ -314,8 +309,12 @@ class ImageLoader:
             Output: Iterator[Tuple[tf.Tensor, tf.Tensor]
         
         """
+        
         # read the label_coordinates.csv file       
         label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
+        
+        count = 0
+        print(f"Total rows in original dataset: {len(label_coordinates_df)}")
         
         # Create a combined label column, this should match the header of the labels.csv file
         label_coordinates_df["label"] = label_coordinates_df.apply(
@@ -338,24 +337,44 @@ class ImageLoader:
         self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()
 
         # Create a new split column in the dataframe for train, test and validation split.
-        label_coordinates_df = self._create_split(label_coordinates_df)
-    
-        # Filter the dataframe based on the split requested in the generator, only return those rows
-        if self.split in ["train", "val", "test"]:
-            label_coordinates_df = label_coordinates_df[
-                label_coordinates_df["split"] == self.split]
+        self.train_df, self.val_df, self.test_df = self._create_split(label_coordinates_df)
+
+         # Select the appropriate DataFrame based on self.split
+        if self.split == 'train':
+            df = self.train_df.copy()  # Create a copy to modify
+        elif self.split == 'val':
+            df = self.val_df
+        elif self.split == 'test':
+            df = self.test_df
+        else:
+            raise ValueError(f"Invalid split: {self.split}")
+
+        print(f"Starting generator for {self.split} with {len(df)} rows")
         
-        # Shuffle if the split is "train"
-        if self.split == "train":
-            label_coordinates_df = label_coordinates_df.sample(frac=1, random_state=42).reset_index(drop=True)
+        # Shuffle if it's the training set
+        if self.split == 'train':
+            df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+            print("Training data shuffled")
+        
+        # Check if the number of samples matches the expected count
+        expected_counts = {"train": 29214, "val": 9739, "test": 9739}
+        if len(df) != expected_counts[self.split]:
+            print(f"Warning: Expected {expected_counts[self.split]} samples for {self.split} split, but got {len(df)}")
+        else:
+            print(f"Expected number of samples for the split matches the count")
+        
+        total_rows = len(df)
            
         # This loop iterates until all the rows have beene exahused for the generator
-        while len(label_coordinates_df) > 0:            
+        while len(df) > 0:            
+            count += 1
+            if count % 1000 == 0:
+                print(f"Generated {count}/{total_rows} samples for {self.split}")
             # randomly select one row from the dataframe to return
-            row = label_coordinates_df.sample(n=1)
+            row = df.sample(n=1)
             
-            # Remove the selected row from the DataFrame
-            label_coordinates_df = label_coordinates_df.drop(row.index) 
+            if self.split == 'train':
+                df = df.drop(row.index)
 
             study_id = row["study_id"].values[0]
             series_id = row["series_id"].values[0]
@@ -384,7 +403,7 @@ class ImageLoader:
             #print("Returning feature and label tensors")
           
             yield img_tensor, one_hot_vector_array
-            
+
 
     def create_dataset(self):
         """
@@ -414,6 +433,8 @@ class ImageLoader:
             tuple: Training dataset and validation dataset.
             Each dataset will have image and label tensors.
         """
+        print(f"load_data called for *{split}* split")
+
         # Filter the label dataframe based on the split
         if split == "train" or split == "val" or split == "test":
             self.split = split
