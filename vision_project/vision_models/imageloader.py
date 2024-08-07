@@ -347,14 +347,11 @@ class ImageLoader:
         # Shuffle if the split is "train"
         if self.split == "train":
             label_coordinates_df = label_coordinates_df.sample(frac=1, random_state=42).reset_index(drop=True)
-            total_samples = len(label_coordinates_df)
-       
-        processed_samples = 0
-        
+           
         # This loop iterates until all the rows have beene exahused for the generator
         while True:
             if len(label_coordinates_df) == 0:
-                print("All samples processed. Raising StopIteration.")
+                print(f"All {self.split} samples processed. Raising StopIteration.")
                 raise StopIteration
             
             #print("*" * 100)
@@ -401,10 +398,6 @@ class ImageLoader:
           
             yield img_tensor, one_hot_vector_array
             
-            #print progress after every 10 samples
-            processed_samples += 1
-            if processed_samples % 10 == 0:  # Print progress every 10 samples
-                print(f"## Progress check : {processed_samples}/{total_samples} samples processed ({processed_samples/total_samples:.2%}) \n")
 
     def create_dataset(self):
         """
