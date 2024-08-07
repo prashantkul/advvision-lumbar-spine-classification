@@ -357,7 +357,7 @@ class ImageLoader:
                 print("All samples processed. Raising StopIteration.")
                 raise StopIteration
             
-            print("*" * 100)
+            #print("*" * 100)
             
             # randomly select one row from the dataframe to return
             row = label_coordinates_df.sample(n=1)
@@ -404,7 +404,7 @@ class ImageLoader:
             #print progress after every 10 samples
             processed_samples += 1
             if processed_samples % 10 == 0:  # Print progress every 10 samples
-                print(f"## Progress check : {processed_samples}/{total_samples} samples processed ({processed_samples/total_samples:.2%})")
+                print(f"## Progress check : {processed_samples}/{total_samples} samples processed ({processed_samples/total_samples:.2%}) \n")
 
     def create_dataset(self):
         """
