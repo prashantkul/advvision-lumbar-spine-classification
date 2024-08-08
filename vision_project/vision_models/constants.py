@@ -17,3 +17,6 @@ TRAIN_SPLIT = 0.80
 VAL_SPLIT = 0.10
 TEST_SPLIT = 0.10
 TRAIN_SAMPLE_RATE = 0.4
+TRAIN = "train"
+TEST = "test"
+VAL = "val"

@@ -4,15 +4,14 @@ import numpy as np
 import pydicom
 import cv2
 import tensorflow as tf
-import vision_models.constants
 from typing import Any, Iterator, Tuple
 import time
 from collections import Counter
-from instance import InstanceCoordinates
-import logging
-from constants import constants
 
-from sklearn import train_test_split
+from vision_models.instance import InstanceCoordinates
+import vision_models.constants as constants
+
+from sklearn.model_selection import train_test_split
 
 class Dataset:
     """
@@ -23,7 +22,7 @@ class Dataset:
     """
 
     def __init__(
-        self, image_dir, label_coordinates_csv, labels_csv, batch_size
+        self, batch_size: None
     ):
         """
         Initialize the ImageLoader.
@@ -35,9 +34,9 @@ class Dataset:
             roi_size (tuple): Size of the region of interest (height, width).
             batch_size (int): Batch size for the dataset.
         """
-        self.image_dir = image_dir
-        self.label_coordinates_csv = label_coordinates_csv
-        self.labels_csv = labels_csv
+        self.image_dir = constants.TRAIN_DATA_PATH
+        self.label_coordinates_csv = constants.TRAIN_LABEL_CORD_PATH
+        self.labels_csv = constants.TRAIN_LABEL_PATH
         self.batch_size = batch_size
         self.label_list = None
         self.train_df = None
@@ -52,6 +51,16 @@ class Dataset:
         # Read train.csv and create a list of labels
         self._prepare_data()
 
+    def _create_human_readable_label(self, label_vector, label_list):
+        """ Create human-readable labels from one-hot encoded vector. """
+        # Convert label_vector to numpy array if it's not already
+        label_vector = np.array(label_vector)
+        # Remove the [0] indexing if label_vector is 1D
+        indices_with_ones = np.where(label_vector == 1)[0]
+        # Select the corresponding labels from label_list
+        human_readable_labels = [label_list[i] for i in indices_with_ones]
+        # Output the labels
+        print("Human-readable labels:", human_readable_labels)
         
     def _create_train_label_cord_dataframe(self):
         """
@@ -61,30 +70,25 @@ class Dataset:
             pd.DataFrame: DataFrame with study_id, series_id, instance_number, x, y, condition, and level columns.
         """
         df = pd.read_csv(self.label_coordinates_csv)
+        
+        # Convert to string types
         df["study_id"] = df["study_id"].astype(str)
         df["series_id"] = df["series_id"].astype(str)
         
-        # create a new column for condition - its a combination of condition and level, lowercase
-        # first remove / from level
+        # Transform the data
         df["level"] = df["level"].str.replace("/", "_")
-        df["class"] = df["condition"].str.lower() + "_" + df["level"].str.lower()
+        df["class"] = df["condition"].str.replace(" ", "_").str.lower() + "_" + df["level"].str.lower()
         
-        # create series directory column
+        # Create series directory column
         df["series_dir"] = self.image_dir + "/" + df["study_id"] + "/" + df["series_id"] + "/"
         
-        print(f"Created train_label_cord dataframe with shape: {df.shape}")
-        print("Columns: ", df.columns)
-        print(df.head(5))
-            
-        return df    
+        return df  
 
     def _create_split(self, df):
-        df['composite_key'] = df['study_id'].astype(str) + '_' + \
-                              df['series_id'].astype(str) + '_' + \
-                              df['class'] 
-
+        df['composite_key'] = df['study_id'].astype(str) + '_' + df['series_id'].astype(str) + '_' + df['class'] 
         class_distribution = df['composite_key'].value_counts()
 
+        # Split into train and test, then further split train into train and validation
         train_ids, test_ids = train_test_split(
             class_distribution.index,
             test_size=0.2,
@@ -99,32 +103,17 @@ class Dataset:
             random_state=42
         )
 
+        # Create splits
         train_split = df[df['composite_key'].isin(train_ids)].copy()
         val_split = df[df['composite_key'].isin(val_ids)].copy()
         test_split = df[df['composite_key'].isin(test_ids)].copy()
 
-        train_split['split'] = 'train'
-        val_split['split'] = 'val'
-        test_split['split'] = 'test'
+        return train_split, val_split, test_split, df
 
-        split_data = pd.concat([train_split, val_split, test_split])
-        split_data.drop(columns=['composite_key'], inplace=True)
-
-        print("Total Data Shape:", split_data.shape)
-        print("Train Set Shape:", train_split.shape)
-        print("Validation Set Shape:", val_split.shape)
-        print("Test Set Shape:", test_split.shape)
-
-        return train_split, val_split, test_split, split_data
-
-    def _create_instance_coordinates(self, df, study_id, series_id):
-        """ Create an InstanceCoordinates object from the DataFrame for the given study_id and series_id. """
-        instances = InstanceCoordinates(study_id, series_id)
-        series_df = df[(df["study_id"] == study_id) & (df["series_id"] == series_id)]
-        for _, row in series_df.iterrows():
-            instances.add_coordinates(row["instance_number"], row["x"], row["y"])
-        return instances
-        
+    def get_df_sizes(self):
+        size = {}
+        {size.update({split: len(df)}) for split, df in zip(['train', 'val', 'test'], [self.train_df, self.val_df, self.test_df])}
+        return size
 
     def _read_dicom(self, file_path):
         """
@@ -149,9 +138,8 @@ class Dataset:
         series_dir = f"{self.image_dir}/{instances.study_id}/{instances.series_id}"
         
         # Initialize a list to store the mask-applied images
-        masked_images = []
+        masked_images = {}
         
-        # Read and process each DICOM image from the file system
         for instance_number in instances.data.keys():
             filename = f"{instance_number}.dcm"
             file_path = os.path.join(series_dir, filename)
@@ -164,80 +152,94 @@ class Dataset:
                 
                 coordinates = instances.get_coordinates(instance_number)
                 for x, y in coordinates:
-                    mask = self.create_gaussian_mask(image_shape, x, y)
+                    mask = Dataset._create_gaussian_mask(image_shape, (x, y))                    
                     combined_mask = np.maximum(combined_mask, mask)
+                    
+                # Convert the single-channel image and mask to three-channel
+                image = np.expand_dims(image, axis=-1)
+                combined_mask = np.expand_dims(combined_mask, axis=-1)
+                combined_image = np.concatenate([image, combined_mask, combined_mask], axis=-1)
                 
-                # Stack the original image and the mask
-                masked_image = np.stack([image, combined_mask], axis=-1)
-                masked_images.append(masked_image)
+                masked_images[instance_number] = combined_image
             else:
                 print(f"File {file_path} not found.")
         
         return masked_images
-    
 
-    def create_gaussian_mask(image_shape, x, y, sigma=10):
-        """ Create a 2D Gaussian mask centered at (x, y) with standard deviation sigma. """
-        xv, yv = np.meshgrid(np.arange(image_shape[1]), np.arange(image_shape[0]))
-        mask = np.exp(-((xv - x) ** 2 + (yv - y) ** 2) / (2 * sigma ** 2))
+ 
+    @staticmethod
+    def _create_gaussian_mask(image_shape, center, sigma=10):
+        """ Create a 2D Gaussian mask centered at center with standard deviation sigma. """
+        x, y = np.meshgrid(np.arange(image_shape[1]), np.arange(image_shape[0]))
+        center_x, center_y = center
+        mask = np.exp(-((x - center_x) ** 2 + (y - center_y) ** 2) / (2 * sigma ** 2))
         return mask
     
+    def _create_instance_coordinates(self, df, study_id, series_id):
+        instances = InstanceCoordinates(study_id, series_id)
+        
+        # Check before filtering
+        subset_df = df[(df['study_id'] == study_id) & (df['series_id'] == series_id)]
+       
+        for _, row in subset_df.iterrows():
+            instance_number = row['instance_number']
+            x = row['x']
+            y = row['y']
+            instances.add_coordinates(instance_number, x, y)
+            
+        return instances
     
-    def _preprocess_image(self, study_id, series_id):
+    def _preprocess_image(self, df, study_id, series_id):
         """ Preprocess images for a given study and series. """
         
         # Get series_dir from self.train_df
-        series_dir = self.train_df[(self.train_df["study_id"] == study_id) & (self.train_df["series_id"] == series_id)]["series_dir"].values[0]
-        
-        # Create instances object
-        instances = self._create_instance_coordinates(self.train_df, study_id, series_id)
-        
-        print(f"Reading images from: {series_dir}")
-        
+        series_dir = df[(df["study_id"] == study_id) & (df["series_id"] == series_id)]["series_dir"].values[0]
         # Get sorted list of DICOM files
         dicom_files = sorted([f for f in os.listdir(series_dir) if f.endswith(".dcm")])
         
+        # Create instances object
+        instances = self._create_instance_coordinates(df, study_id, series_id)
+        print(f"Reading images from: {series_dir}")
+        print(f"Total images in the directory: {len(dicom_files)}")
+        # Print images requires attention mask from instances
+        print(f"Images requiring attention: {instances.data.keys()}")
+        # Apply Gaussian attention to relevant images
+        attended_images = self._apply_gaussian_attention(instances)
+        
         images = []
 
-        # Read and process each DICOM image from the file system
-        for idx, filename in enumerate(dicom_files):
+        for filename in dicom_files:
+            instance_number = int(filename.split('.')[0])
             file_path = os.path.join(series_dir, filename)
             
             dicom_image = pydicom.dcmread(file_path)
             image = dicom_image.pixel_array
-            image_shape = image.shape
-
-            # Apply Gaussian attention mask if the instance_number matches
-            instance_number = int(filename.split('.')[0])
-            if instance_number in instances.data:
-                combined_mask = self._apply_gaussian_attention(instances, image_shape, instance_number)
-                
-                # Stack the original image and the mask
-                attended_img = np.stack([image, combined_mask], axis=-1)
-                images.append(attended_img)
+            
+            # Check if the image needs attention
+            if instance_number in attended_images:
+                img = attended_images[instance_number]
             else:
-                images.append(image)
-        
-        # Convert the list of images to tensors and preprocess
-        processed_images = []
-        for img in images:
-            img_tensor = tf.convert_to_tensor(img, dtype=tf.float32)
-            img_tensor = tf.expand_dims(img_tensor, axis=-1)  # Add channel dimension
-            img_tensor = tf.image.resize(img_tensor, self.roi_size)
-            img_tensor = tf.image.grayscale_to_rgb(img_tensor)  # Convert to RGB
-            processed_images.append(img_tensor)
+                # Convert the single-channel image to three-channel by duplicating the original image
+                image = np.expand_dims(image, axis=-1)
+                img = np.concatenate([image, image, image], axis=-1)
+            
+            img = tf.convert_to_tensor(img, dtype=tf.float32)
+            
+            # Resize the image to the desired ROI size
+            img = tf.image.resize(img, self.roi_size)
+            
+            images.append(img)
 
         # Pad images to 192 if necessary
-        print(f"Number of images in series: {len(processed_images)}")
-        if len(processed_images) < 192:
+        if len(images) < 192:
             print(f"Padding tensor to 192 images")
-            padding = tf.zeros((192 - len(processed_images), *self.roi_size, 3), dtype=tf.float32)
-            processed_images = tf.concat([processed_images, padding], axis=0)
+            padding = tf.zeros((192 - len(images), *self.roi_size, 3), dtype=tf.float32)
+            images = tf.concat([tf.stack(images), padding], axis=0)
+        else:
+            print(f"Truncating or using all images (up to 192)")
+            images = tf.stack(images[:192])  # Truncate to 192 if more
 
-        result_tensor = tf.stack(processed_images)
-        print(f"Resulting preprocessed image tensor shape: {result_tensor.shape}")
-        return result_tensor
-
+        return images
     
     def _base_generator(self, df: pd.DataFrame, split: str, repeat: bool = False) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
         total_rows = len(df)
@@ -248,9 +250,8 @@ class Dataset:
 
         while True:
             df_copy = df.copy()
-            df_copy = df_copy.sample(frac=1, random_state=42).reset_index(drop=True)  # Shuffle the data
             
-            while len(df_copy) > 0:
+            while not df_copy.empty:
                 count += 1
                 if count % 1000 == 0:
                     elapsed_time = time.time() - start_time
@@ -258,34 +259,37 @@ class Dataset:
                     print(f" Time elapsed: {elapsed_time:.2f} seconds")
                     print(f" Remaining rows in df: {len(df_copy)}")
 
+                # Get the first row and drop it from df_copy
                 row = df_copy.iloc[0]
-                df_copy = df_copy.iloc[1:]
+                df_copy = df_copy.drop(df_copy.index[0])
 
                 study_id = row["study_id"]
                 series_id = row["series_id"]
-    
+
                 unique_study_ids.add(study_id)
 
-                img_tensor = self._preprocess_image(study_id, series_id)
+                img_tensor = self._preprocess_image(df, study_id, series_id)
 
                 label = row['class']
-                
+
                 try:
                     label_vector = self.label_list.index(label)
                     unique_labels.add(label)
                 except ValueError:
-                        print(f"Error: Label '{label}' not found in the label list")
-                        
+                    print(f"Error: Label '{label}' not found in the label list")
+
                 one_hot_vector = tf.one_hot(label_vector, depth=len(self.label_list))
 
                 yield img_tensor, one_hot_vector
-            
+
             if not repeat:
                 break
 
         self._print_generator_stats(count, total_rows, unique_study_ids, unique_labels, start_time, split)
 
     def _train_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
+        # shuffle train_df before passing to _base_generator
+        self.train_df = self.train_df.sample(frac=1, random_state=42).reset_index(drop=True)
         yield from self._base_generator(self.train_df, 'train', repeat=False)
 
     def _val_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
@@ -323,7 +327,7 @@ class Dataset:
         self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()
     
     
-    def create_dataset(self, split: str):
+    def create_dataset(self, split: str) -> Tuple[Any, int]:
         if split == 'train':
             generator = self._train_generator
             dataset_size = len(self.train_df)
@@ -344,23 +348,22 @@ class Dataset:
             ),
         )
 
-        return dataset, dataset_size
+        return dataset
 
-    def load_data(self, split: str, batch_size: int = None) -> Tuple[Any, int]:
+    def load_data(self, split: str):
         """ Main method to load data for a given split """
         print(f"load_data called for *{split}* split")
         
-        dataset, dataset_size = self.create_dataset(split)
+        dataset = self.create_dataset(split)       
+        if self.batch_size:
+            batch_size = self.batch_size
+        else:
+            batch_size = constants.BATCH_SIZE
         
-        if batch_size is not None:
-            self.batch_size = batch_size
-        
-        print("Batching the dataset to batch_size:", self.batch_size)
+        print("Batching the dataset to batch_size:", batch_size)
         dataset = dataset.batch(self.batch_size)
         
         if split in ["val"]:
             dataset = dataset.repeat()
 
-        steps_per_epoch = dataset_size // self.batch_size
-
-        return dataset, steps_per_epoch
+        return dataset

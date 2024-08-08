@@ -1,28 +1,22 @@
 import tensorflow as tf
 from vision_models.utils import VisionUtils
 from vision_models import constants
-from vision_models.imageloader import ImageLoader
+from vision_models.dataset import Dataset
 from vision_models.densenetmodel import DenseNetVisionModel, ModelTrainer
 import pickle
-
+import os
 class VisionModelPipeline:
 
     def __init__(self):
         self.vutil = VisionUtils()
         self.strategy = self._get_strategy()
-        self.batch_size = 24 # change batch size to 24 for training. Batch greater than 24 will result in OOM error
+        self.batch_size = 2 # change batch size to 24 for training. Batch greater than 24 will result in OOM error
         with self.strategy.scope():
-            self.image_loader = ImageLoader(
-                label_coordinates_csv=constants.TRAIN_LABEL_CORD_PATH,
-                labels_csv=constants.TRAIN_LABEL_PATH,
-                image_dir=constants.TRAIN_DATA_PATH,
-                roi_size=(224, 224),
-                batch_size=self.batch_size
-            )
+            self.image_loader = Dataset(batch_size=self.batch_size)
             self.input_shape = (self.batch_size, 192, 224, 224, 3)  # Updated to include the slice dimension
             self.num_classes = 25
             self.weights = 'imagenet'
-            self.epochs = 10
+            self.epochs = 1
 
     def _get_strategy(self):
         gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -47,7 +41,7 @@ class VisionModelPipeline:
 
     def load_data(self, mode, study_ids: list[str] = None):
         print("Creating datasets...")
-        dataset = self.image_loader.load_data(mode, study_ids)
+        dataset = self.image_loader.load_data(mode)
         if self.strategy is tf.distribute.OneDeviceStrategy(device="/cpu:0"):
             return dataset
         else:
@@ -95,22 +89,59 @@ class VisionModelPipeline:
                 print("Element structure:", elements)
                 break
 
+    def calculate_steps_per_epoch(self):
+        return self.image_loader.get_df_sizes()
+    
+    def _get_strategy(self):
+        gpus = tf.config.experimental.list_physical_devices('GPU')
+        if len(gpus) > 1:
+            print(f"Using MirroredStrategy with {len(gpus)} GPUs")
+            return tf.distribute.MirroredStrategy(devices=["/gpu:0", "/gpu:1"])
+        elif len(gpus) == 1:
+            print("Using single GPU")
+            return tf.distribute.OneDeviceStrategy(device="/gpu:0")
+        else:
+            print("Using CPU")
+            return tf.distribute.OneDeviceStrategy(device="/cpu:0")
+        
+    def train_model(self, model, train_dataset, val_dataset, train_steps_per_epoch, validation_steps):
+        with self.strategy.scope():
+            trainer = ModelTrainer(model)
+            
+            # Check for existing checkpoints in the current directory
+            checkpoint_dir = os.getcwd()
+            checkpoint_files = [f for f in os.listdir(checkpoint_dir) if f.startswith('model_epoch_') and f.endswith('.weights.h5')]
+            
+            # Sort the checkpoint files by epoch number
+            checkpoint_files.sort(key=lambda f: int(f.split('_')[-1].split('.')[0]))
+            
+            # Load the latest checkpoint if it exists
+            if checkpoint_files:
+                latest_checkpoint = os.path.join(checkpoint_dir, checkpoint_files[-1])
+                print(f"Loading existing checkpoint from {latest_checkpoint}")
+                model.load_weights(latest_checkpoint)
+        
+            history = trainer.train(train_dataset, val_dataset, epochs=self.epochs, 
+                                    steps_per_epoch=train_steps_per_epoch, validation_steps=validation_steps)
+        return history
+    
+    
 def main():
     pipeline = VisionModelPipeline()
-    #pipeline.setup_environment()
-    study_ids = []
-    #study_ids = ['4003253','8785691', '7143189','4646740']
+    
     train_dataset = pipeline.load_data("train")
     val_dataset = pipeline.load_data("val")
     
-    #pipeline._print_distributed_dataset(train_dataset, num_elements=1)
+    # calculate step sizes
+    dataset_size_dict = pipeline.calculate_steps_per_epoch()
+    training_steps_per_epoch = dataset_size_dict[constants.TRAIN] // pipeline.batch_size
+    validation_steps_per_epoch = dataset_size_dict[constants.VAL] // pipeline.batch_size
+    print(f"Training steps per epoch: {training_steps_per_epoch}")
+    print(f"Validation steps per epoch: {validation_steps_per_epoch}")
 
     # Uncomment code below for training the model
     model = pipeline.build_model()
-    history = pipeline.train_model(model, train_dataset, val_dataset)
-    print(history)
-    with open('history.pkl', 'wb') as file:
-        pickle.dump(history.history, file)
+    history = pipeline.train_model(model, train_dataset, val_dataset, training_steps_per_epoch, validation_steps_per_epoch)            
 
 if __name__ == "__main__":
     main()
