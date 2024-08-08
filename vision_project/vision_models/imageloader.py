@@ -202,6 +202,49 @@ class ImageLoader:
         result = tf.stack(images)
         print(f"Resulting preprocessed image tensor shape: {result.shape}")
         return result
+    
+    def _preprocess_image_test(self, study_id, series_id, x=None, y=None):
+        """ Preprocess images for a given study and series. """
+        
+        print(f"Preprocessing images for study_id: {study_id}, series_id: {series_id}")
+        
+        series_dir = f"{self.image_dir}/{study_id}/{series_id}"
+        print(f"Reading images from {series_dir}")
+        images = []           
+        
+        # Get sorted list of DICOM files
+        dicom_files = sorted([f for f in os.listdir(series_dir) if f.endswith(".dcm")])
+        
+        for idx, filename in enumerate(dicom_files):
+            file_path = os.path.join(series_dir, filename)
+            original_img = self._read_dicom(file_path)
+            
+            if x is not None and y is not None:
+                print(f"Applying Gaussian attention at coordinates: ({x}, {y})")
+                attended_img = self.apply_gaussian_attention(original_img, x, y)
+            else:
+                print("Skipping Gaussian attention, processing the entire image.")
+                attended_img = original_img
+            
+            # Convert to tensor and preprocess
+            img = tf.convert_to_tensor(attended_img, dtype=tf.float32)
+            img = tf.expand_dims(img, axis=-1)  # Add channel dimension
+            img = tf.image.resize(img, self.roi_size)
+            img = tf.image.grayscale_to_rgb(img)  # Convert to RGB
+            
+            images.append(img)
+
+        # Pad images to 192 if necessary
+        print(f"Number of images in series: {len(images)}")
+        if len(images) < 192:
+            print(f"Padding tensor to 192 images")
+            padding = tf.zeros((192 - len(images), *self.roi_size, 3), dtype=tf.float32)
+            images = tf.concat([images, padding], axis=0)
+
+        result = tf.stack(images)
+        print(f"Resulting preprocessed image tensor shape: {result.shape}")
+        return result
+
 
     def _create_split(self, df):
         """
