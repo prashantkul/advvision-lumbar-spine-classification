@@ -38,7 +38,8 @@ class VisionModelPredictor:
     def load_model(self, model_path):
         model = DenseNetVisionModel(num_classes=self.num_classes, input_shape=self.input_shape, weights=None)
         model.load_weights(model_path)
-        model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+        # model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+        model.compile_model()
         return model
 
     def prepare_data(self, split):
