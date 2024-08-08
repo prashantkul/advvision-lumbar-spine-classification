@@ -204,47 +204,32 @@ class ImageLoader:
         return result
     
     def _preprocess_image_test(self, study_id, series_id, x=None, y=None):
-        """ Preprocess images for a given study and series. """
-        
-        print(f"Preprocessing images for study_id: {study_id}, series_id: {series_id}")
-        
-        series_dir = f"{self.image_dir}/{study_id}/{series_id}"
+        series_dir = os.path.join(self.image_dir, study_id, series_id)
         print(f"Reading images from {series_dir}")
-        images = []           
-        
-        # Get sorted list of DICOM files
+        if not os.path.exists(series_dir):
+            raise FileNotFoundError(f"Directory does not exist: {series_dir}")
+        images = []
+
         dicom_files = sorted([f for f in os.listdir(series_dir) if f.endswith(".dcm")])
-        
         for idx, filename in enumerate(dicom_files):
             file_path = os.path.join(series_dir, filename)
             original_img = self._read_dicom(file_path)
-            
             if x is not None and y is not None:
-                print(f"Applying Gaussian attention at coordinates: ({x}, {y})")
                 attended_img = self.apply_gaussian_attention(original_img, x, y)
             else:
-                print("Skipping Gaussian attention, processing the entire image.")
                 attended_img = original_img
-            
-            # Convert to tensor and preprocess
             img = tf.convert_to_tensor(attended_img, dtype=tf.float32)
-            img = tf.expand_dims(img, axis=-1)  # Add channel dimension
+            img = tf.expand_dims(img, axis=-1)
             img = tf.image.resize(img, self.roi_size)
-            img = tf.image.grayscale_to_rgb(img)  # Convert to RGB
-            
+            img = tf.image.grayscale_to_rgb(img)
             images.append(img)
 
-        # Pad images to 192 if necessary
-        print(f"Number of images in series: {len(images)}")
         if len(images) < 192:
-            print(f"Padding tensor to 192 images")
             padding = tf.zeros((192 - len(images), *self.roi_size, 3), dtype=tf.float32)
             images = tf.concat([images, padding], axis=0)
 
         result = tf.stack(images)
-        print(f"Resulting preprocessed image tensor shape: {result.shape}")
         return result
-
 
     def _create_split(self, df):
         """
@@ -337,33 +322,18 @@ class ImageLoader:
     
         return sampled_df
     
-    def _feature_label_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
-        """ Generate features and labels for the dataset. 
-            This method implements a method to return feature and label tensors for the dataset.
-            
-            The method reads the label_coordinates_csv file and reads a random row from the file.
-            It then generates a feature tensor by calling the _preprocess_image method and generates a label tensor
-            by creating a one-hot encoded vector for the label. The method then returns the feature and label tensors.
-            
-            The while loop returns unlimited number of feature and label tensors until all rows from the label_coordinates_csv
-            file are exhausted.
-        
-        """
+    def _feature_label_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor, int, int]]:
+        """ Generate features and labels for the dataset. """
         if self.mode == 'predict':
-            # Implement a simpler generator for prediction
             for study_id in os.listdir(self.image_dir):
                 study_dir = os.path.join(self.image_dir, study_id)
                 for series_id in os.listdir(study_dir):
                     series_dir = os.path.join(study_dir, series_id)
                     img_tensor = self._preprocess_image(study_id, series_id)
-                    yield img_tensor, study_id
+                    yield img_tensor, np.zeros((25,), dtype=np.float32), study_id, series_id
         else:
-            # Original implementation for training/validation
-
-            # read the label_coordinates.csv file       
             label_coordinates_df = pd.read_csv(self.label_coordinates_csv)
             
-            # Create a combined label column, this should match the header of the labels.csv file
             label_coordinates_df["label"] = label_coordinates_df.apply(
                 lambda row: (
                     row["condition"].replace(" ", "_")
@@ -373,38 +343,30 @@ class ImageLoader:
                 axis=1,
             )
             
-            # filter the label_corrdinates_df based on the study_ids
             if self.study_ids:
                 print("Available Study IDs in DataFrame:", len(label_coordinates_df['study_id'].unique()))
                 label_coordinates_df = self._filter_df(label_coordinates_df, self.study_ids)
                 if len(label_coordinates_df) == 0:
                     print("No rows found for the study_ids provided")
 
-            # Extract unique labels and store them from train.csv, we will match generated labels against this list
             self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()
 
-            # Create a new split column in the dataframe for train, test and validation split.
             label_coordinates_df = self._create_split(label_coordinates_df)
             
-            # Sample 40% of the data
             label_coordinates_df = self._sample_dataframe(label_coordinates_df, fraction=constants.TRAIN_SAMPLE_RATE)
         
             total_samples = len(label_coordinates_df)
             processed_samples = 0
             
-            # This loop iterates until all the rows have beene exahused for the generator
             while len(label_coordinates_df) > 0:
                 print("*" * 100)
 
-                # Filter the dataframe based on the split requested in the generator, only return those rows
                 if self.split in ["train", "val", "test"]:
                     label_coordinates_df = label_coordinates_df[
                         label_coordinates_df["split"] == self.split]
                 
-                # randomly select one row from the dataframe to return
                 row = label_coordinates_df.sample(n=1)
                 
-                # Remove the selected row from the DataFrame
                 label_coordinates_df = label_coordinates_df.drop(row.index) 
 
                 study_id = row["study_id"].values[0]
@@ -414,39 +376,28 @@ class ImageLoader:
                 x = row["x"].values[0]
                 y = row["y"].values[0]
 
-                # print(
-                #     f"Going to generate feature for study_id: {study_id}, series_id: {series_id}, condition: {condition}, level: {level}"
-                # )
-
-                # Preprocess the image before supplying to the generator.
                 img_tensor = self._preprocess_image(study_id, series_id, x , y)
-                # print(
-                #     f"Feature tensor generated, size: {img_tensor.shape}, now generating label"
-                # )
                 
-                # Create a unique label for the combination of study_id, series_id, condition, and level
                 label = f"{row['condition'].values[0].replace(' ', '_').lower()}_{row['level'].values[0].replace('/', '_').lower()}"
                 try:
                     label_vector = self.label_list.index(label)
                 except ValueError:
                     raise ValueError(f"Label {label} not found in the label list")
-            # print(f"Label generated")
-                # Create a one-hot encoded vector
+
                 one_hot_vector = [0.0] * len(self.label_list)
                 one_hot_vector[label_vector] = 1.0
 
-                print(f"One hot enocded label vector generated: {one_hot_vector}")
+                print(f"One hot encoded label vector generated: {one_hot_vector}")
                 self._create_human_readable_label(one_hot_vector, self.label_list)
 
                 one_hot_vector_array = np.array(one_hot_vector, dtype=np.float32)
-                #print("Returning feature and label tensors")
             
-                yield img_tensor, one_hot_vector_array
+                yield img_tensor, one_hot_vector_array, study_id, series_id
                 
-                #print progress after every 10 samples
                 processed_samples += 1
-                if processed_samples % 10 == 0:  # Print progress every 10 samples
+                if processed_samples % 10 == 0:
                     print(f"Progress: {processed_samples}/{total_samples} samples processed ({processed_samples/total_samples:.2%})")
+
 
     def create_dataset(self):
         """
@@ -456,8 +407,12 @@ class ImageLoader:
             tf.data.Dataset: Combined dataset of features and labels.
         """
 
+        def generator():
+            for img_tensor, label_tensor, study_id, series_id in self._feature_label_generator():
+                yield img_tensor, label_tensor
+
         dataset = tf.data.Dataset.from_generator(
-            self._feature_label_generator,
+            generator,
             output_signature=(
                 tf.TensorSpec(
                     shape=(192, self.roi_size[0], self.roi_size[1], 3), dtype=tf.float32
@@ -466,6 +421,20 @@ class ImageLoader:
             ),
         )
         return dataset
+    
+    def create_metadata(self):
+        """
+        Create a generator for study_id and series_id metadata.
+
+        Returns:
+            generator: Generator of study_id and series_id.
+        """
+        def metadata_generator():
+            for _, _, study_id, series_id in self._feature_label_generator():
+                yield study_id, series_id
+
+        return metadata_generator()
+
 
     def load_data(self, split, study_ids: list[str] = None):
         """

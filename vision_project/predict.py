@@ -60,6 +60,13 @@ class VisionModelPredictor:
             return self.image_loader.load_data(split)
         else:
             return self.image_loader.load_test_data(constants.TEST_DATA_PATH)
+
+    def evaluate(self, dataset):
+        results = self.model.evaluate(dataset)
+        loss, accuracy = results[0], results[1]
+        return loss, accuracy
+    
+    
         
     # def save_evaluation_results(self, evaluation_results, output_csv):
         
@@ -80,29 +87,35 @@ class VisionModelPredictor:
     #     self.save_evaluation_results(results, output_csv)
     #     return results
 
-    def evaluate_and_predict(self, dataset, output_csv=None, is_evaluation=False):
-        if is_evaluation:
-            evaluation_metrics = self.model.evaluate(dataset)
-            loss, accuracy = evaluation_metrics[0], evaluation_metrics[1]
-        else:
-            loss, accuracy = None, None
+    # def evaluate_and_predict(self, dataset, output_csv=None, is_evaluation=False):
+    #     if is_evaluation:
+    #         evaluation_metrics = self.model.evaluate(dataset)
+    #         loss, accuracy = evaluation_metrics[0], evaluation_metrics[1]
+    #     else:
+    #         loss, accuracy = None, None
 
-        study_ids = []
-        series_ids = []
-        predictions = []
+    #     # y_true = []
+    #     # y_pred = []
+    #     # study_ids = []
+    #     # series_ids = []
+    #     # predictions = []
 
-        for images, labels in dataset:
-            predictions_batch = self.model.predict(images)
-            study_ids.extend(labels['study_id'])  # Assuming study_id is part of the labels
-            series_ids.extend(labels['series_id'])  # Assuming series_id is part of the labels
-            predictions.append(predictions_batch)
+    #     # for images, labels in dataset:
+    #     #     predictions_batch = self.model.predict(images)
+    #     #     y_true.extend(np.argmax(labels.numpy(), axis=1))
+    #     #     y_pred.extend(np.argmax(predictions_batch, axis=1))
+    #     #     study_ids.extend([label.decode('utf-8') for label in labels['study_id'].numpy()])  # Assuming study_id is part of the labels
+    #     #     series_ids.extend([label.decode('utf-8') for label in labels['series_id'].numpy()])  # Assuming series_id is part of the labels
+    #     #     predictions.append(predictions_batch)
 
-        predictions = np.concatenate(predictions, axis=0)
+    #     # predictions = np.concatenate(predictions, axis=0)
         
-        if output_csv:
-            self.save_predictions(predictions, output_csv, study_ids, series_ids)
+    #     # if output_csv:
+    #     #     self.save_predictions(predictions, output_csv, study_ids, series_ids)
 
-        return loss, accuracy, study_ids, series_ids, predictions
+    #     # return loss, accuracy, study_ids, series_ids, predictions
+    #     return loss, accuracy
+
 
     # def evaluate(self, val_dataset):
     #     # Initial evaluation to get loss and accuracy
@@ -374,38 +387,55 @@ class VisionModelPredictor:
         print(f"Aggregated binary predictions saved to {aggregated_output_csv}")
 
 
-    def predict(self, data_loader, output_csv):
-        data_images_dir = data_loader.image_dir
-        data_study_ids = os.listdir(data_images_dir)
-        predictions = []
-        study_ids = []
-        series_ids = []
-        counter = 0
+    # def predict(self, data_loader, output_csv):
+    #     data_images_dir = data_loader.image_dir
+    #     data_study_ids = os.listdir(data_images_dir)
+    #     predictions = []
+    #     study_ids = []
+    #     series_ids = []
+    #     counter = 0
 
-        for study_id in data_study_ids:
-            study_dir = os.path.join(data_images_dir, study_id)
-            for series_id in os.listdir(study_dir):
-                series_dir = os.path.join(study_dir, series_id)
-                images = sorted([os.path.join(series_dir, f) for f in os.listdir(series_dir) if f.endswith(".dcm")])
-                if not images:
-                    continue
-                img_tensor = data_loader._preprocess_image(study_id, series_id)
-                prediction = self.model.predict(np.expand_dims(img_tensor, axis=0))
-                predictions.append(prediction)
-                study_ids.append(study_id)
-                series_ids.append(series_id)
-                counter += 1
+    #     for study_id in data_study_ids:
+    #         study_dir = os.path.join(data_images_dir, study_id)
+    #         for series_id in os.listdir(study_dir):
+    #             series_dir = os.path.join(study_dir, series_id)
+    #             images = sorted([os.path.join(series_dir, f) for f in os.listdir(series_dir) if f.endswith(".dcm")])
+    #             if not images:
+    #                 continue
+    #             img_tensor = data_loader._preprocess_image(study_id, series_id)
+    #             prediction = self.model.predict(np.expand_dims(img_tensor, axis=0))
+    #             predictions.append(prediction)
+    #             study_ids.append(study_id)
+    #             series_ids.append(series_id)
+    #             counter += 1
 
-                if counter % 10 == 0:
-                    temp_output_csv = f'{output_csv.split(".")[0]}_part_{counter // 10}.csv'
-                    self.save_predictions(np.concatenate(predictions, axis=0), temp_output_csv, study_ids, series_ids)
-                    predictions = []
-                    study_ids = []
-                    series_ids = []
+    #             if counter % 10 == 0:
+    #                 temp_output_csv = f'{output_csv.split(".")[0]}_part_{counter // 10}.csv'
+    #                 self.save_predictions(np.concatenate(predictions, axis=0), temp_output_csv, study_ids, series_ids)
+    #                 predictions = []
+    #                 study_ids = []
+    #                 series_ids = []
 
-        if predictions:
-            self.save_predictions(np.concatenate(predictions, axis=0), output_csv, study_ids, series_ids)
+    #     if predictions:
+    #         self.save_predictions(np.concatenate(predictions, axis=0), output_csv, study_ids, series_ids)
 
+    def predict(self, dataset):
+            y_true = []
+            y_pred = []
+            study_ids = []
+            series_ids = []
+            predictions = []
+
+            for images, labels in dataset:
+                predictions_batch = self.model.predict(images)
+                y_true.extend(np.argmax(labels['label'].numpy(), axis=1))
+                y_pred.extend(np.argmax(predictions_batch, axis=1))
+                study_ids.extend([label.decode('utf-8') for label in labels['study_id'].numpy()])
+                series_ids.extend([label.decode('utf-8') for label in labels['series_id'].numpy()])
+                predictions.append(predictions_batch)
+
+            predictions = np.concatenate(predictions, axis=0)
+            return study_ids, series_ids, predictions
 
     # def predict(self, output_csv):
     #     test_images_dir = constants.TEST_DATA_PATH
@@ -583,9 +613,9 @@ def main():
     predictor = VisionModelPredictor(model_path, mode=mode)
 
     # Evaluation on validation dataset
-    val_dataset = predictor.prepare_data('val')
+    val_dataset = predictor.prepare_data('val').take(2)
     print("Evaluating on validation dataset")
-    loss, accuracy, study_ids, series_ids, predictions = predictor.evaluate_and_predict(val_dataset, is_evaluation=True)
+    loss, accuracy = predictor.evaluate(val_dataset)
 
     # Save evaluation results to CSV
     evaluation_results = {
@@ -596,22 +626,17 @@ def main():
     evaluation_df.to_csv(eval_output_csv, index=False)
     print(f"Evaluation results saved to {eval_output_csv}")
 
-    # Convert validation predictions to binary and aggregate by study_id
-    predictor.convert_to_binary_and_aggregate(predictions, study_ids, series_ids, threshold, binary_eval_output_csv, aggregated_eval_output_csv)
-
     # Prediction on validation dataset
     print("Running predictions on validation dataset")
-    _, _, study_ids, series_ids, predictions = predictor.evaluate_and_predict(val_dataset, pred_val_output_csv)
-
-    # Convert validation predictions to binary and aggregate by study_id
+    study_ids, series_ids, predictions = predictor.predict(val_dataset)
+    predictor.save_predictions(predictions, pred_val_output_csv, study_ids, series_ids)
     predictor.convert_to_binary_and_aggregate(predictions, study_ids, series_ids, threshold, binary_val_output_csv, aggregated_val_output_csv)
 
     # Prediction on test dataset (using train data split)
-    test_dataset = predictor.prepare_data('test')
+    test_dataset = predictor.prepare_data('test').take(2)
     print("Running predictions on test dataset")
-    _, _, study_ids, series_ids, predictions = predictor.evaluate_and_predict(test_dataset, pred_test_output_csv)
-
-    # Convert test predictions to binary and aggregate by study_id
+    study_ids, series_ids, predictions = predictor.predict(test_dataset)
+    predictor.save_predictions(predictions, pred_test_output_csv, study_ids, series_ids)
     predictor.convert_to_binary_and_aggregate(predictions, study_ids, series_ids, threshold, binary_test_output_csv, aggregated_test_output_csv)
 
     # Prediction on test images dataset
