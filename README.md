@@ -1,49 +1,34 @@
-# advvision-lumbar-spine-classification
+# Lumbar Spine Degenerative Disease Classification with Deep Neural Networks
+Prashant Kulkarni, Kwaku Ofori-Atta, Dharti Seagraves, Steve Veldman
 
-## Getting Started
+## Summary
 
-This repo contains work done for the Computer Vision project at Univeristy of Chicago Master of Science.
+This repository contains code and other resources for our final project for ADSP 31023 - Advanced Computer Vision with Deep Learning, part of the Univeristy of Chicago's Master of Science in Applied Data Science program. This will also serve as the starting point for our submission to the associated Kaggle competition for this dataset, which will serve as a continuation of our group's work after completion of ADSP 31023.
 
 ## Dataset
+The poject utilizes the RSNA 2024 Lumbar Spine Degenerative Classification dataset, available at:
+https://www.kaggle.com/competitions/rsna-2024-lumbar-spine-degenerative-classification/data
 
-The dataset used for this project is available at: https://www.kaggle.com/competitions/rsna-2024-lumbar-spine-degenerative-classification/data
+## Additional Details
+A full summary of the dataset, problem statement, and our work for the project can be found in our presentation deck:
+https://docs.google.com/presentation/d/1yqncDNBqYR_Ylbd8w7Cb3hsD7GgMLR9w/edit?usp=sharing&ouid=117738997373544471509&rtpof=true&sd=true
 
-## Image format
+## Guide to this Repository (Essential Code):
+Data Exploration and Preprocessing:
+- eda.ipynb contains our exploratory data analysis
+- imageloader.py defines a class for loading our dataset, establishing the train/validate/test subsets, and application of Gaussian Attention Mask to each image
 
-This data uses the DICOM format for the images. https://www.dicomstandard.org/
+Models:
+- densenetmodel.py contains a DenseNet-based transfer learning model for Stage 1 predictions (classification of each condition at each spinal level)
+- Champion and Challenger models are in development for Stage 2 (prediction of severity for each condition at each spinal level)
+- a Challenger model based on ResNet architecture is also in development for Stage 1 predicitons.
 
-## Labels
+Model Training, Evaluation, and Predictions:
+- trainer.py
+- predict.py
+- convert_predictions.ipynb
 
-There are overall 75 labels for this dataset. 25 main labels and 3 secondary labels.
-
-### Following are the 25 primary labels for this dataset:
-* spinal_canal_stenosis_l1_l2
-* spinal_canal_stenosis_l2_l3
-* spinal_canal_stenosis_l3_l4
-* spinal_canal_stenosis_l4_l5
-* spinal_canal_stenosis_l5_s1
-* left_neural_foraminal_narrowing_l1_l2
-* left_neural_foraminal_narrowing_l2_l3
-* left_neural_foraminal_narrowing_l3_l4
-* left_neural_foraminal_narrowing_l4_l5
-* left_neural_foraminal_narrowing_l5_s1
-* right_neural_foraminal_narrowing_l1_l2
-* right_neural_foraminal_narrowing_l2_l3
-* right_neural_foraminal_narrowing_l3_l4
-* right_neural_foraminal_narrowing_l4_l5
-* right_neural_foraminal_narrowing_l5_s1
-* left_subarticular_stenosis_l1_l2
-* left_subarticular_stenosis_l2_l3
-* left_subarticular_stenosis_l3_l4
-* left_subarticular_stenosis_l4_l5
-* left_subarticular_stenosis_l5_s1
-* right_subarticular_stenosis_l1_l2
-* right_subarticular_stenosis_l2_l3
-* right_subarticular_stenosis_l3_l4
-* right_subarticular_stenosis_l4_l5
-* right_subarticular_stenosis_l5_s1
-
-* Each of this labels have 3 sub-labels: 
-  * Normal/Mild 
-  * Moderate 
-  * Severe
+Environment, Variables, and Utilities:
+- utils.py contains a class wrapper for a collection of helper functions used throughout the other code files
+- constants.py defines a collection of variables used throughout the other code files
+- environment.yml contains the setup for our virtual machine, including the specific versions of python packages used
