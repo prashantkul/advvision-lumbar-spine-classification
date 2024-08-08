@@ -1,7 +1,7 @@
 import os
 import tensorflow as tf
 from vision_models.utils import VisionUtils
-from vision_models.imageloader import ImageLoader
+from vision_models.imageloader2 import ImageLoader
 from vision_models.densenetmodel import DenseNetVisionModel
 import vision_models.constants as constants
 import pandas as pd
