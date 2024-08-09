@@ -16,21 +16,20 @@ https://docs.google.com/presentation/d/1yqncDNBqYR_Ylbd8w7Cb3hsD7GgMLR9w/edit?us
 ## Guide to this Repository (Essential Code):
 Data Exploration and Preprocessing:
 - imageloader.py defines a class for loading our dataset, establishing the train/validate/test subsets, and application of Gaussian Attention Mask to each image
-- eda.ipynb* contains our exploratory data analysis
-(* located in the "eda" branch of the repository)
+- eda.ipynb contains our exploratory data analysis
 
 Models:
 - densenetmodel.py contains a DenseNet-based transfer learning model for Stage 1 predictions (binary detection/classification of each condition at each spinal level)
-- A Challenger model based on an alternate transfer learning architecture is also planned for Stage 1 predictions.
-- stage2_transfer.py** contains a draft EfficientNet-based transfer learning model for Stage 2 predictions (severity classification of each condition at each spinal level)
-- stage2_model_scratch.py** contains an in-development model for Stage 2 predictions based on the RegNet architecture, which will be trained from scratch
-(** located in the "stage-2-models" branch of the repository)
+- A "challenger" model based on an alternate transfer learning architecture is also planned for Stage 1 predictions.
+- stage2_model_transfer.py* contains a draft EfficientNet-based transfer learning model for Stage 2 predictions (severity classification of each condition at each spinal level)
+- stage2_model_scratch.py* contains an in-development model for Stage 2 predictions based on the RegNet architecture, which will be trained from scratch
+(* located in the "stage-2-models" branch of the repository)
 
 Model Training, Evaluation, and Predictions:
 - test_notebook.ipynb is utilized to call and run the various classes and functions defined throughout the rest of the repository (the version currently live in teh main branch was used to run training on the Stage 1 DenseNet model)
 - trainer.py contains a class wrapper for the methods called by each model during training
-- predict.py*** contains a class wrapper for the methods called by each model during prediction
-(*** located in the "prediction" branch of the repository, currently being reworked to integrate with an update to imageloader.py)
+- predict.py** contains a class wrapper for the methods called by each model during prediction
+(** located in the "prediction" branch of the repository, currently being reworked to integrate with an update to imageloader.py)
 
 Environment, Variables, and Utilities:
 - utils.py contains a class wrapper for a collection of helper functions used throughout the other code files
