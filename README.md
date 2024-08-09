@@ -15,21 +15,22 @@ https://docs.google.com/presentation/d/1yqncDNBqYR_Ylbd8w7Cb3hsD7GgMLR9w/edit?us
 
 ## Guide to this Repository (Essential Code):
 Data Exploration and Preprocessing:
-- eda.ipynb contains our exploratory data analysis
+- eda.ipynb* contains our exploratory data analysis
 - imageloader.py defines a class for loading our dataset, establishing the train/validate/test subsets, and application of Gaussian Attention Mask to each image
+(* located in the "eda" branch of the repository)
 
 Models:
 - densenetmodel.py contains a DenseNet-based transfer learning model for Stage 1 predictions (binary detection/classification of each condition at each spinal level)
-- ** contains the in-development draft of a ResNet-based tranfer learning model for Stage 2 predictions (severity classification of each condition at each spinal level)
-- ** contains the in-development draft of a custom model for Stage 2 predictions (severity classification of each condition at each spinal level)
+- stage2_model_resnet.py** contains a draft ResNet-based transfer learning model for Stage 2 predictions (severity classification of each condition at each spinal level)
+- stage2_model_scratch.py** contains the in-development custom model for Stage 2 predictions (severity classification of each condition at each spinal level)
 - A Challenger model based on ResNet architecture is also planned for Stage 1 predictions.
-(** located in the "___" branch of the repository)
+(** located in the "stage-2-models" branch of the repository)
 
 Model Training, Evaluation, and Predictions:
-- trainer.py
-- predict.py (currently being reworked to integrate with an update to imageloader.py, and located in the "prediction" branch of the repository)
-- convert_predictions.ipynb*** (currently being reworked to integrate with an update to imageloader.py)
-(*** located in the "prediction" branch of the repository)
+- trainer.py runs model training on Stage 1 DenseNet transfer learning model
+- predict.py*** 
+- convert_predictions.ipynb*** 
+(*** located in the "prediction" branch of the repository, currently being reworked to integrate with an update to imageloader.py)
 
 Environment, Variables, and Utilities:
 - utils.py contains a class wrapper for a collection of helper functions used throughout the other code files
