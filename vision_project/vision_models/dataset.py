@@ -50,6 +50,18 @@ class Dataset:
         # Read train_label_cord CSV file and create a DataFrame
         # Read train.csv and create a list of labels
         self._prepare_data()
+        
+    def _prepare_data(self):
+        # Read the label coordinates CSV file and create a DataFrame
+        df = self._create_train_label_cord_dataframe()
+
+        # Create the splits
+        self.train_df, self.val_df, self.test_df, self.split_data = self._create_split(df)
+        
+        # Extract unique labels and store them from labels.csv
+        self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()
+        print("#"* 100)
+        print("Dataset splits sizes:", self.get_df_sizes())
 
     def _create_human_readable_label(self, label_vector, label_list):
         """ Create human-readable labels from one-hot encoded vector. """
@@ -199,10 +211,7 @@ class Dataset:
         
         # Create instances object
         instances = self._create_instance_coordinates(df, study_id, series_id)
-        print(f"Reading images from: {series_dir}")
-        print(f"Total images in the directory: {len(dicom_files)}")
-        # Print images requires attention mask from instances
-        print(f"Images requiring attention: {instances.data.keys()}")
+        
         # Apply Gaussian attention to relevant images
         attended_images = self._apply_gaussian_attention(instances)
         
@@ -232,11 +241,9 @@ class Dataset:
 
         # Pad images to 192 if necessary
         if len(images) < 192:
-            print(f"Padding tensor to 192 images")
             padding = tf.zeros((192 - len(images), *self.roi_size, 3), dtype=tf.float32)
             images = tf.concat([tf.stack(images), padding], axis=0)
         else:
-            print(f"Truncating or using all images (up to 192)")
             images = tf.stack(images[:192])  # Truncate to 192 if more
 
         return images
@@ -316,17 +323,6 @@ class Dataset:
         for label, count in label_counts.most_common(10):  # Show top 10 labels
             print(f"  {label}: {count}")
 
-    def _prepare_data(self):
-        # Read the label coordinates CSV file and create a DataFrame
-        df = self._create_train_label_cord_dataframe()
-
-        # Create the splits
-        self.train_df, self.val_df, self.test_df, self.split_data = self._create_split(df)
-        
-        # Extract unique labels and store them from labels.csv
-        self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()
-    
-    
     def create_dataset(self, split: str) -> Tuple[Any, int]:
         if split == 'train':
             generator = self._train_generator
@@ -352,7 +348,7 @@ class Dataset:
 
     def load_data(self, split: str):
         """ Main method to load data for a given split """
-        print(f"load_data called for *{split}* split")
+        print(f"\n ----- Creating dataset for *{split}* ------ \n")
         
         dataset = self.create_dataset(split)       
         if self.batch_size:

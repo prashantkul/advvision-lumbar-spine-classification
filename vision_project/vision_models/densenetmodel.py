@@ -12,6 +12,7 @@ class ModelTrainer:
 
     def compile_model(self):
         # Separate method for model compilation
+        print("Compiling the model...")
         self.model.compile(
             optimizer=Adam(),  # Using Adam optimizer with default settings
             loss="binary_crossentropy",
@@ -30,6 +31,7 @@ class ModelTrainer:
         class_balancing_weights=None,
         load_checkpoint=None
     ):
+        print(f"{'*'*20} Training the model {'*'*20}")        
         # Define callbacks
         early_stopping = tf.keras.callbacks.EarlyStopping(
             monitor="val_loss", patience=5, min_delta=0.001, verbose=1
@@ -64,7 +66,8 @@ class ModelTrainer:
         if class_balancing_weights is not None:
             fit_args['class_weight'] = class_balancing_weights
 
-
+        return self.model.fit(**fit_args)
+    
 class DenseNetVisionModel(tf.keras.Model):
     def __init__(self, num_classes, input_shape, weights='imagenet'):
         super(DenseNetVisionModel, self).__init__()
