@@ -1,27 +1,28 @@
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suppress INFO and WARNING logs
+
 import tensorflow as tf
 from vision_models.utils import VisionUtils
 from vision_models import constants
 from vision_models.dataset import Dataset
 from vision_models.densenetmodel import DenseNetVisionModel, ModelTrainer
-import pickle
-import os
 class VisionModelPipeline:
 
     def __init__(self):
         self.vutil = VisionUtils()
         self.strategy = self._get_strategy()
-        self.batch_size = 2 # change batch size to 24 for training. Batch greater than 24 will result in OOM error
+        self.batch_size = 12 # change batch size to 24 for training if using A100 40GB. On T4, set to 12.
         with self.strategy.scope():
             self.image_loader = Dataset(batch_size=self.batch_size)
             self.input_shape = (self.batch_size, 192, 224, 224, 3)  # Updated to include the slice dimension
             self.num_classes = 25
             self.weights = 'imagenet'
-            self.epochs = 1
+            self.epochs = 2
 
     def _get_strategy(self):
         gpus = tf.config.experimental.list_physical_devices('GPU')
         if len(gpus) > 1:
-            print(f"Using MirroredStrategy with {len(gpus)} GPUs")
+            print(f">> Using MirroredStrategy with {len(gpus)} GPUs \n")
             return tf.distribute.MirroredStrategy(devices=["/gpu:0", "/gpu:1"])
         elif len(gpus) == 1:
             print("Using single GPU")
@@ -50,7 +51,7 @@ class VisionModelPipeline:
     def build_model(self):
         with self.strategy.scope():
             model = DenseNetVisionModel(num_classes=self.num_classes, input_shape=self.input_shape, weights=self.weights)
-            model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+            #model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
             
            # Build the model with a sample input
             sample_input = tf.keras.Input(shape=self.input_shape)
@@ -60,6 +61,7 @@ class VisionModelPipeline:
 
     def train_model(self, model, train_dataset, val_dataset):
         with self.strategy.scope():
+            print("Starting training...")
             trainer = ModelTrainer(model)
             history = trainer.train(train_dataset, val_dataset, epochs=self.epochs)
         return history
@@ -136,8 +138,9 @@ def main():
     dataset_size_dict = pipeline.calculate_steps_per_epoch()
     training_steps_per_epoch = dataset_size_dict[constants.TRAIN] // pipeline.batch_size
     validation_steps_per_epoch = dataset_size_dict[constants.VAL] // pipeline.batch_size
-    print(f"Training steps per epoch: {training_steps_per_epoch}")
-    print(f"Validation steps per epoch: {validation_steps_per_epoch}")
+    print(f"\n Training steps per epoch:    {training_steps_per_epoch}")
+    print(f"   Validation steps per epoch:  {validation_steps_per_epoch} \n")
+    print("*" * 100)
 
     # Uncomment code below for training the model
     model = pipeline.build_model()
