@@ -262,9 +262,9 @@ class Dataset:
                 count += 1
                 if count % 1000 == 0:
                     elapsed_time = time.time() - start_time
-                    print(f" Generated {count}/{total_rows} samples for {split}")
-                    print(f" Time elapsed: {elapsed_time:.2f} seconds")
-                    print(f" Remaining rows in df: {len(df_copy)}")
+                    print(f"\n Generated {count}/{total_rows} samples for {split}")
+                    print(f"   Time elapsed: {elapsed_time:.2f} seconds")
+                    print(f"   Remaining rows in df: {len(df_copy)} \n")
 
                 # Get the first row and drop it from df_copy
                 row = df_copy.iloc[0]
@@ -295,9 +295,10 @@ class Dataset:
         self._print_generator_stats(count, total_rows, unique_study_ids, unique_labels, start_time, split)
 
     def _train_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
-        # shuffle train_df before passing to _base_generator
-        self.train_df = self.train_df.sample(frac=1, random_state=42).reset_index(drop=True)
-        yield from self._base_generator(self.train_df, 'train', repeat=False)
+        while True:
+            # shuffle train_df before passing to _base_generator
+            self.train_df = self.train_df.sample(frac=1, random_state=42).reset_index(drop=True)
+            yield from self._base_generator(self.train_df, 'train', repeat=False)
 
     def _val_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
         yield from self._base_generator(self.val_df, 'val', repeat=True)
