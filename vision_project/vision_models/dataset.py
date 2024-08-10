@@ -120,6 +120,11 @@ class Dataset:
         val_split = df[df['composite_key'].isin(val_ids)].copy()
         test_split = df[df['composite_key'].isin(test_ids)].copy()
 
+        # Save the splits as CSV files
+        train_split.to_csv('train_split.csv', index=False)
+        val_split.to_csv('val_split.csv', index=False)
+        test_split.to_csv('test_split.csv', index=False)   
+        
         return train_split, val_split, test_split, df
 
     def get_df_sizes(self):
@@ -239,13 +244,11 @@ class Dataset:
             
             images.append(img)
 
-        # Pad images to 192 if necessary
-        if len(images) < 192:
-            padding = tf.zeros((192 - len(images), *self.roi_size, 3), dtype=tf.float32)
+        # Pad images to 200 if necessary
+        if len(images) < 200:
+            padding = tf.zeros((200 - len(images), *self.roi_size, 3), dtype=tf.float32)
             images = tf.concat([tf.stack(images), padding], axis=0)
-        else:
-            images = tf.stack(images[:192])  # Truncate to 192 if more
-
+                
         return images
     
     def _base_generator(self, df: pd.DataFrame, split: str, repeat: bool = False) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
@@ -258,6 +261,7 @@ class Dataset:
         df_copy = df.copy()
             
         while not df_copy.empty:
+            print(f"* Generating samples for {split} split *")
             count += 1
             if count % 1000 == 0:
                 elapsed_time = time.time() - start_time
@@ -287,7 +291,8 @@ class Dataset:
             one_hot_vector = tf.one_hot(label_vector, depth=len(self.label_list))
 
             yield img_tensor, one_hot_vector
-
+            
+        
         self._print_generator_stats(count, total_rows, unique_study_ids, unique_labels, start_time, split)
 
     def _train_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
@@ -336,7 +341,7 @@ class Dataset:
         dataset = tf.data.Dataset.from_generator(
             generator,
             output_signature=(
-                tf.TensorSpec(shape=(192, self.roi_size[0], self.roi_size[1], 3), dtype=tf.float32),
+                tf.TensorSpec(shape=(200, self.roi_size[0], self.roi_size[1], 3), dtype=tf.float32),
                 tf.TensorSpec(shape=(len(self.label_list),), dtype=tf.float32),
             ),
         )

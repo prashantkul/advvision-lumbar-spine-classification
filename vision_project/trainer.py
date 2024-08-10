@@ -14,7 +14,7 @@ class VisionModelPipeline:
         self.batch_size = 12 # change batch size to 24 for training if using A100 40GB. On T4, set to 12.
         with self.strategy.scope():
             self.image_loader = Dataset(batch_size=self.batch_size)
-            self.input_shape = (self.batch_size, 192, 224, 224, 3)  # Updated to include the slice dimension
+            self.input_shape = (self.batch_size, 200, 224, 224, 3)  # Updated to include the slice dimension
             self.num_classes = 25
             self.weights = 'imagenet'
             self.epochs = 2
