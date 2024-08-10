@@ -11,7 +11,7 @@ class VisionModelPipeline:
     def __init__(self):
         self.vutil = VisionUtils()
         self.strategy = self._get_strategy()
-        self.batch_size = 12 # change batch size to 24 for training if using A100 40GB. On T4, set to 12.
+        self.batch_size = 4 # change batch size to 24 for training if using A100 40GB. On T4, set to 12.
         with self.strategy.scope():
             self.image_loader = Dataset(batch_size=self.batch_size)
             self.input_shape = (self.batch_size, 200, 224, 224, 3)  # Updated to include the slice dimension
@@ -145,9 +145,6 @@ class VisionModelPipeline:
         small_train_generator = train_dataset.take(100)  # Take 100 samples for quick testing
         small_val_generator = val_datset.take(20)      # Take 20 samples for quick validation
 
-        steps_per_epoch = 100 // self.batch_size
-        validation_steps = 20 // self.batch_size
-
         # Run a quick training session
         self.train_model(model, 
             train_dataset = small_train_generator,
@@ -160,9 +157,8 @@ class VisionModelPipeline:
 
 def main():
     pipeline = VisionModelPipeline()
-    image_loader = Dataset(batch_size=12)
+    image_loader = Dataset(pipeline.batch_size)
 
-    
     #calculate step sizes
     dataset_size_dict = pipeline.calculate_steps_per_epoch()
     training_steps_per_epoch = dataset_size_dict[constants.TRAIN] // pipeline.batch_size
