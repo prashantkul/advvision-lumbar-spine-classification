@@ -288,24 +288,27 @@ class Dataset:
             except ValueError:
                 print(f"Error: Label '{label}' not found in the label list")
 
-            one_hot_vector = tf.one_hot(label_vector, depth=len(self.label_list))
+            label_one_hot_vector = tf.one_hot(label_vector, depth=len(self.label_list))
 
-            yield img_tensor, one_hot_vector
+            yield img_tensor, label_one_hot_vector
             
         
         self._print_generator_stats(count, total_rows, unique_study_ids, unique_labels, start_time, split)
 
     def _train_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
-        while True:
-            # Shuffle the DataFrame at the start of each epoch
-            self.train_df = self.train_df.sample(frac=1, random_state=42).reset_index(drop=True)
-            yield from self._base_generator(self.train_df, 'train', repeat=False)
+        # Shuffle the DataFrame at the start of each epoch
+        self.train_df = self.train_df.sample(frac=1, random_state=42).reset_index(drop=True)
+        
+        for img_tensor, label in self._base_generator(self.train_df, 'train', repeat=False):
+                yield img_tensor, label
 
     def _val_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
-        yield from self._base_generator(self.val_df, 'val', repeat=True)
+        for img_tensor, label in self._base_generator(self.val_df, 'val', repeat=True):
+            yield img_tensor, label
 
     def _test_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
-        yield from self._base_generator(self.test_df, 'test', repeat=True)
+        for img_tensor, label in self._base_generator(self.test_df, 'test', repeat=True):
+            yield img_tensor, label
 
 
     def _print_generator_stats(self, count, total_rows, unique_study_ids, unique_labels, start_time, split):
