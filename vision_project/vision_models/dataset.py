@@ -363,8 +363,9 @@ class Dataset:
         
         print("Batching the dataset to batch_size:", batch_size)
         dataset = dataset.batch(self.batch_size)
-        
-        if split in ["val"]:
+             
+        if split in [constants.TRAIN, constants.VAL]:
             dataset = dataset.repeat()
+        
 
         return dataset
