@@ -255,48 +255,44 @@ class Dataset:
         unique_labels = set()
         start_time = time.time()
 
-        while True:
-            df_copy = df.copy()
+        df_copy = df.copy()
             
-            while not df_copy.empty:
-                count += 1
-                if count % 1000 == 0:
-                    elapsed_time = time.time() - start_time
-                    print(f"\n Generated {count}/{total_rows} samples for {split}")
-                    print(f"   Time elapsed: {elapsed_time:.2f} seconds")
-                    print(f"   Remaining rows in df: {len(df_copy)} \n")
+        while not df_copy.empty:
+            count += 1
+            if count % 1000 == 0:
+                elapsed_time = time.time() - start_time
+                print(f"\n Generated {count}/{total_rows} samples for {split}")
+                print(f"   Time elapsed: {elapsed_time:.2f} seconds")
+                print(f"   Remaining rows in df: {len(df_copy)} \n")
 
-                # Get the first row and drop it from df_copy
-                row = df_copy.iloc[0]
-                df_copy = df_copy.drop(df_copy.index[0])
+            # Get the first row and drop it from df_copy
+            row = df_copy.iloc[0]
+            df_copy = df_copy.drop(df_copy.index[0])
 
-                study_id = row["study_id"]
-                series_id = row["series_id"]
+            study_id = row["study_id"]
+            series_id = row["series_id"]
 
-                unique_study_ids.add(study_id)
+            unique_study_ids.add(study_id)
 
-                img_tensor = self._preprocess_image(df, study_id, series_id)
+            img_tensor = self._preprocess_image(df, study_id, series_id)
 
-                label = row['class']
+            label = row['class']
 
-                try:
-                    label_vector = self.label_list.index(label)
-                    unique_labels.add(label)
-                except ValueError:
-                    print(f"Error: Label '{label}' not found in the label list")
+            try:
+                label_vector = self.label_list.index(label)
+                unique_labels.add(label)
+            except ValueError:
+                print(f"Error: Label '{label}' not found in the label list")
 
-                one_hot_vector = tf.one_hot(label_vector, depth=len(self.label_list))
+            one_hot_vector = tf.one_hot(label_vector, depth=len(self.label_list))
 
-                yield img_tensor, one_hot_vector
-
-            if not repeat:
-                break
+            yield img_tensor, one_hot_vector
 
         self._print_generator_stats(count, total_rows, unique_study_ids, unique_labels, start_time, split)
 
     def _train_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
         while True:
-            # shuffle train_df before passing to _base_generator
+            # Shuffle the DataFrame at the start of each epoch
             self.train_df = self.train_df.sample(frac=1, random_state=42).reset_index(drop=True)
             yield from self._base_generator(self.train_df, 'train', repeat=False)
 
