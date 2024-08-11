@@ -1,10 +1,10 @@
 import tensorflow as tf
 from keras.models import Model
 from tqdm.keras import TqdmCallback
-from keras.applications import DenseNet121
+from keras.applications import ResNet101
 from keras.optimizers import Adam
 
-class ModelTrainer:
+class ResNetModelTrainer:
     def __init__(self, model):
         self.model = model
         # Compile the model in the constructor
@@ -68,9 +68,9 @@ class ModelTrainer:
 
         return self.model.fit(**fit_args)
     
-class DenseNetVisionModel(tf.keras.Model):
+class ResNetVisionModel(tf.keras.Model):
     def __init__(self, num_classes, input_shape, weights='imagenet'):
-        super(DenseNetVisionModel, self).__init__()
+        super(ResNetVisionModel, self).__init__()
         print(f"Input shape received to the init method: {input_shape}")
         self.num_classes = num_classes
         
@@ -86,7 +86,7 @@ class DenseNetVisionModel(tf.keras.Model):
         
         print(f"Input shape for base model: {self.image_shape}")
 
-        self.base_model = tf.keras.applications.DenseNet121(
+        self.base_model = tf.keras.applications.ResNet101(
             include_top=False, 
             weights=weights, 
             input_shape=self.image_shape
@@ -112,7 +112,7 @@ class DenseNetVisionModel(tf.keras.Model):
         # Build the prediction layer
         self.prediction_layer.build((None, feature_shape))
 
-        super(DenseNetVisionModel, self).build(input_shape)
+        super(ResNetVisionModel, self).build(input_shape)
 
     def call(self, inputs, training=False):
         # Get the shape of the input
