@@ -5,9 +5,9 @@ from tqdm.keras import TqdmCallback
 from keras.applications import ResNet101
 from keras.optimizers import Adam
 
-from tensorflow.keras.callbacks import ReduceLROnPlateau
+#from tensorflow.keras.callbacks import ReduceLROnPlateau
 
-class BatchReduceLROnPlateau(ReduceLROnPlateau):
+class BatchReduceLROnPlateau(tf.keras.callbacks.ReduceLROnPlateau):
     def __init__(self, monitor='auc', factor=0.5, patience=100, verbose=1, mode='max', min_delta=1e-4, cooldown=50, min_lr=1e-6, **kwargs):
         super(BatchReduceLROnPlateau, self).__init__(
             monitor=monitor, factor=factor, patience=patience, verbose=verbose, mode=mode,
