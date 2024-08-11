@@ -1,7 +1,8 @@
 import tensorflow as tf
 from keras.models import Model
 from tqdm.keras import TqdmCallback
-from keras.applications.resnet101 import ResNet101
+#from keras.applications.resnet101 import ResNet101
+from keras.applications import ResNet101
 from keras.optimizers import Adam
 
 class ResNetModelTrainer:
