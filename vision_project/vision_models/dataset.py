@@ -120,6 +120,11 @@ class Dataset:
         val_split = df[df['composite_key'].isin(val_ids)].copy()
         test_split = df[df['composite_key'].isin(test_ids)].copy()
 
+        # Save the splits as CSV files
+        train_split.to_csv('train_split.csv', index=False)
+        val_split.to_csv('val_split.csv', index=False)
+        test_split.to_csv('test_split.csv', index=False)   
+        
         return train_split, val_split, test_split, df
 
     def get_df_sizes(self):
@@ -239,13 +244,11 @@ class Dataset:
             
             images.append(img)
 
-        # Pad images to 192 if necessary
-        if len(images) < 192:
-            padding = tf.zeros((192 - len(images), *self.roi_size, 3), dtype=tf.float32)
+        # Pad images to 200 if necessary
+        if len(images) < 200:
+            padding = tf.zeros((200 - len(images), *self.roi_size, 3), dtype=tf.float32)
             images = tf.concat([tf.stack(images), padding], axis=0)
-        else:
-            images = tf.stack(images[:192])  # Truncate to 192 if more
-
+                
         return images
     
     def _base_generator(self, df: pd.DataFrame, split: str, repeat: bool = False) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
@@ -255,56 +258,57 @@ class Dataset:
         unique_labels = set()
         start_time = time.time()
 
-        while True:
-            df_copy = df.copy()
+        df_copy = df.copy()
             
-            while not df_copy.empty:
-                count += 1
-                if count % 1000 == 0:
-                    elapsed_time = time.time() - start_time
-                    print(f"\n Generated {count}/{total_rows} samples for {split}")
-                    print(f"   Time elapsed: {elapsed_time:.2f} seconds")
-                    print(f"   Remaining rows in df: {len(df_copy)} \n")
+        while not df_copy.empty:
+            print(f"* Generating samples for {split} split *")
+            count += 1
+            if count % 1000 == 0:
+                elapsed_time = time.time() - start_time
+                print(f"\n Generated {count}/{total_rows} samples for {split}")
+                print(f"   Time elapsed: {elapsed_time:.2f} seconds")
+                print(f"   Remaining rows in df: {len(df_copy)} \n")
 
-                # Get the first row and drop it from df_copy
-                row = df_copy.iloc[0]
-                df_copy = df_copy.drop(df_copy.index[0])
+            # Get the first row and drop it from df_copy
+            row = df_copy.iloc[0]
+            df_copy = df_copy.drop(df_copy.index[0])
 
-                study_id = row["study_id"]
-                series_id = row["series_id"]
+            study_id = row["study_id"]
+            series_id = row["series_id"]
 
-                unique_study_ids.add(study_id)
+            unique_study_ids.add(study_id)
 
-                img_tensor = self._preprocess_image(df, study_id, series_id)
+            img_tensor = self._preprocess_image(df, study_id, series_id)
 
-                label = row['class']
+            label = row['class']
 
-                try:
-                    label_vector = self.label_list.index(label)
-                    unique_labels.add(label)
-                except ValueError:
-                    print(f"Error: Label '{label}' not found in the label list")
+            try:
+                label_vector = self.label_list.index(label)
+                unique_labels.add(label)
+            except ValueError:
+                print(f"Error: Label '{label}' not found in the label list")
 
-                one_hot_vector = tf.one_hot(label_vector, depth=len(self.label_list))
+            label_one_hot_vector = tf.one_hot(label_vector, depth=len(self.label_list))
 
-                yield img_tensor, one_hot_vector
-
-            if not repeat:
-                break
-
+            yield img_tensor, label_one_hot_vector
+            
+        
         self._print_generator_stats(count, total_rows, unique_study_ids, unique_labels, start_time, split)
 
     def _train_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
-        while True:
-            # shuffle train_df before passing to _base_generator
-            self.train_df = self.train_df.sample(frac=1, random_state=42).reset_index(drop=True)
-            yield from self._base_generator(self.train_df, 'train', repeat=False)
+        # Shuffle the DataFrame at the start of each epoch
+        self.train_df = self.train_df.sample(frac=1, random_state=42).reset_index(drop=True)
+        
+        for img_tensor, label in self._base_generator(self.train_df, 'train', repeat=False):
+                yield img_tensor, label
 
     def _val_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
-        yield from self._base_generator(self.val_df, 'val', repeat=True)
+        for img_tensor, label in self._base_generator(self.val_df, 'val', repeat=True):
+            yield img_tensor, label
 
     def _test_generator(self) -> Iterator[Tuple[tf.Tensor, tf.Tensor]]:
-        yield from self._base_generator(self.test_df, 'test', repeat=True)
+        for img_tensor, label in self._base_generator(self.test_df, 'test', repeat=True):
+            yield img_tensor, label
 
 
     def _print_generator_stats(self, count, total_rows, unique_study_ids, unique_labels, start_time, split):
@@ -340,7 +344,7 @@ class Dataset:
         dataset = tf.data.Dataset.from_generator(
             generator,
             output_signature=(
-                tf.TensorSpec(shape=(192, self.roi_size[0], self.roi_size[1], 3), dtype=tf.float32),
+                tf.TensorSpec(shape=(200, self.roi_size[0], self.roi_size[1], 3), dtype=tf.float32),
                 tf.TensorSpec(shape=(len(self.label_list),), dtype=tf.float32),
             ),
         )
@@ -359,8 +363,9 @@ class Dataset:
         
         print("Batching the dataset to batch_size:", batch_size)
         dataset = dataset.batch(self.batch_size)
-        
-        if split in ["val"]:
+             
+        if split in [constants.TRAIN, constants.VAL]:
             dataset = dataset.repeat()
+        
 
         return dataset

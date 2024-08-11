@@ -4,6 +4,45 @@ from tqdm.keras import TqdmCallback
 from keras.applications import DenseNet121
 from keras.optimizers import Adam
 
+from tensorflow.keras.callbacks import ReduceLROnPlateau
+import tensorflow as tf
+
+class BatchReduceLROnPlateau(ReduceLROnPlateau):
+    def __init__(self, monitor='auc', factor=0.5, patience=100, verbose=1, mode='max', min_delta=1e-4, cooldown=50, min_lr=1e-6, **kwargs):
+        super(BatchReduceLROnPlateau, self).__init__(
+            monitor=monitor, factor=factor, patience=patience, verbose=verbose, mode=mode,
+            min_delta=min_delta, cooldown=cooldown, min_lr=min_lr, **kwargs
+        )
+        self.batch_count = 0
+    
+    def on_train_batch_end(self, batch, logs=None):
+        logs = logs or {}
+        self.batch_count += 1
+        
+        batch_auc = logs.get(self.monitor)
+        if batch_auc is None:
+            return
+        
+        if self.in_cooldown():
+            self.cooldown_counter -= 1
+            self.wait = 0
+        
+        if self.monitor_op(batch_auc - self.min_delta, self.best):
+            self.best = batch_auc
+            self.wait = 0
+        elif not self.in_cooldown():
+            self.wait += 1
+            if self.wait >= self.patience:
+                old_lr = float(tf.keras.backend.get_value(self.model.optimizer.lr))
+                if old_lr > self.min_lr:
+                    new_lr = old_lr * self.factor
+                    new_lr = max(new_lr, self.min_lr)
+                    tf.keras.backend.set_value(self.model.optimizer.lr, new_lr)
+                    if self.verbose > 0:
+                        print(f'\nBatch {self.batch_count}: reducing learning rate to {new_lr:.6f}.')
+                    self.cooldown_counter = self.cooldown
+                    self.wait = 0
+
 class ModelTrainer:
     def __init__(self, model):
         self.model = model
@@ -47,7 +86,19 @@ class ModelTrainer:
             monitor="val_loss", factor=0.5, patience=3, min_lr=0.00001, verbose=1
         )
 
-        self.callbacks = [early_stopping, model_checkpoint, reduce_lr]
+        # Create the callback to monitor AUC within an epoch. 
+        batch_reduce_lr = BatchReduceLROnPlateau(
+            monitor='auc',  # Monitor the AUC metric
+            factor=0.5,     # Reduce LR by half when triggered
+            patience=300,    # Wait for 300 batches before reducing LR
+            verbose=1,
+            mode='max',     # We want to maximize AUC
+            min_delta=1e-4, # Minimum change to qualify as an improvement
+            cooldown=150,   # Wait for 150 batches after each LR reduction before resuming monitoring
+            min_lr=1e-6     # Don't reduce LR below this value
+        )
+
+        self.callbacks = [early_stopping, model_checkpoint, reduce_lr, batch_reduce_lr]
         
         if load_checkpoint:
             self.model.load_weights(load_checkpoint)
