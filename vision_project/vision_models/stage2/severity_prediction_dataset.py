@@ -6,11 +6,9 @@ from vision_project.vision_models.dataset import Dataset
 
 class SeverityPredictionDataset(Dataset):
 
-    def __init(self, disease_predictions, ground_truth_predictions=None):
+    def __init(self, disease_predictions, balance_variables, ground_truth_predictions=None):
         super().__init__(constants.BATCH_SIZE)
         self.disease_predictions = disease_predictions
-        self.ground_truth_predicitions = ground_truth_predictions
-
     ##TODO: we are predicting at the study_id level but we split by the series id
 
     def _create_split(self, df, balance_variables=None):
@@ -39,6 +37,15 @@ class SeverityPredictionDataset(Dataset):
 
         return train_split, val_split, test_split, df
 
+    def _prepare_data(self):
+        # Read the label coordinates CSV file and create a DataFrame
+        df = self._create_train_label_cord_dataframe()
+        self.train_df, self.val_df, self.test_df, self.split_data = self._create_split(df, self.balance_variables)
+
+        # Extract unique labels and store them from labels.csv
+        self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()
+        print("#"* 100)
+        print("Dataset splits sizes:", self.get_df_sizes())
 
     def augment(self, predictions):
         self.train_df = \
