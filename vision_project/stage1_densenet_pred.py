@@ -32,6 +32,7 @@ def init():
         # model = DenseNetVisionModel(input_shape=(224, 224, 3), num_classes=len(labels))
         
         # Load the weights
+        # model.load_weights(local_model_path)
         model.load_weights(local_model_path)
         return model
 
