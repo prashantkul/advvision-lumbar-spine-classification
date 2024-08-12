@@ -7,96 +7,75 @@ from keras.optimizers import Adam
 
 #from tensorflow.keras.callbacks import ReduceLROnPlateau
 
-class BatchReduceLROnPlateau(tf.keras.callbacks.ReduceLROnPlateau):
-    def __init__(self, monitor='auc', factor=0.5, patience=100, verbose=1, mode='max', min_delta=1e-4, cooldown=50, min_lr=1e-6, **kwargs):
-        super(BatchReduceLROnPlateau, self).__init__(
-            monitor=monitor, factor=factor, patience=patience, verbose=verbose, mode=mode,
-            min_delta=min_delta, cooldown=cooldown, min_lr=min_lr, **kwargs
-        )
+class BatchReduceLROnPlateau(Callback):
+    def __init__(self, monitor='auc', factor=0.5, patience=300, verbose=1, mode='max', min_delta=1e-4, cooldown=150, min_lr=1e-6):
+        super(BatchReduceLROnPlateau, self).__init__()
+        self.monitor = monitor
+        self.factor = factor
+        self.patience = patience
+        self.verbose = verbose
+        self.mode = mode
+        self.min_delta = min_delta
+        self.cooldown = cooldown
+        self.min_lr = min_lr
+
+        self.best = None
+        self.wait = 0
+        self.cooldown_counter = 0
         self.batch_count = 0
-    
+
+        if mode == 'min':
+            self.monitor_op = lambda a, b: a < b - min_delta
+        elif mode == 'max':
+            self.monitor_op = lambda a, b: a > b + min_delta
+        else:
+            raise ValueError(f"Invalid mode: {mode}")
+
+    def on_train_begin(self, logs=None):
+        self.best = float('inf') if self.mode == 'min' else float('-inf')
+
     def on_train_batch_end(self, batch, logs=None):
         logs = logs or {}
         self.batch_count += 1
         
-        batch_auc = logs.get(self.monitor)
-        if batch_auc is None:
+        current = logs.get(self.monitor)
+        if current is None:
             return
         
         if self.in_cooldown():
             self.cooldown_counter -= 1
             self.wait = 0
         
-        if self.monitor_op(batch_auc - self.min_delta, self.best):
-            self.best = batch_auc
+        if self.monitor_op(current, self.best):
+            self.best = current
             self.wait = 0
         elif not self.in_cooldown():
             self.wait += 1
             if self.wait >= self.patience:
-                old_lr = float(tf.keras.backend.get_value(self.model.optimizer.lr))
+                old_lr = self.model.optimizer.lr.numpy()
                 if old_lr > self.min_lr:
                     new_lr = old_lr * self.factor
                     new_lr = max(new_lr, self.min_lr)
-                    tf.keras.backend.set_value(self.model.optimizer.lr, new_lr)
+                    self.model.optimizer.lr.assign(new_lr)
                     if self.verbose > 0:
                         print(f'\nBatch {self.batch_count}: reducing learning rate to {new_lr:.6f}.')
                     self.cooldown_counter = self.cooldown
                     self.wait = 0
 
-class ResNetModelTrainer:
-    def __init__(self, model):
-        self.model = model
-        # Compile the model in the constructor
-        self.compile_model()
+    def in_cooldown(self):
+        return self.cooldown_counter > 0
 
-    def compile_model(self):
-        # Separate method for model compilation
-        print("Compiling the model...")
-        self.model.compile(
-            optimizer=Adam(),  # Using Adam optimizer with default settings
-            loss="binary_crossentropy",
-            metrics=["binary_accuracy",                 
-                     tf.keras.metrics.AUC(multi_label=True, num_labels=self.model.num_classes),
-                    ],
-        )
-
-    def train(
-        self,
-        train_generator,
-        validation_generator,
-        epochs=1,
-        steps_per_epoch=None,
-        validation_steps=None,
-        class_balancing_weights=None,
-        load_checkpoint=None
-    ):
-        print(f"{'*'*20} Training the model {'*'*20}")        
-        # Define callbacks
-        early_stopping = tf.keras.callbacks.EarlyStopping(
-            monitor="val_loss", patience=5, min_delta=0.001, verbose=1
-        )
-
-        model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
-            filepath="best_model.weights.h5",
-            save_weights_only=True,  # Save only the weights (not the entire model)
-            save_freq='epoch' # Save every epoch
-        )
-
-        reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
-            monitor="val_loss", factor=0.5, patience=3, min_lr=0.00001, verbose=1
-        )
-
-        # Create the callback to monitor AUC within an epoch. 
-        batch_reduce_lr = BatchReduceLROnPlateau(
-            monitor='auc',  # Monitor the AUC metric
-            factor=0.5,     # Reduce LR by half when triggered
-            patience=300,    # Wait for 300 batches before reducing LR
-            verbose=1,
-            mode='max',     # We want to maximize AUC
-            min_delta=1e-4, # Minimum change to qualify as an improvement
-            cooldown=150,   # Wait for 150 batches after each LR reduction before resuming monitoring
-            min_lr=1e-6     # Don't reduce LR below this value
-        )
+# Create the callback
+batch_reduce_lr = BatchReduceLROnPlateau(
+    monitor='auc',
+    factor=0.5,
+    patience=300,    # About 10% of an epoch
+    verbose=1,
+    mode='max',
+    min_delta=1e-4,
+    cooldown=150,    # About 5% of an epoch
+    min_lr=1e-6
+)
 
         self.callbacks = [early_stopping, model_checkpoint, reduce_lr, batch_reduce_lr]
         
