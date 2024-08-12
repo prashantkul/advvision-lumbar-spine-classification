@@ -4,7 +4,7 @@ from tqdm.keras import TqdmCallback
 from keras.applications import DenseNet121
 from keras.optimizers import Adam
 
-from tensorflow.keras.callbacks import ReduceLROnPlateau
+from keras.callbacks import ReduceLROnPlateau
 import tensorflow as tf
 
 class BatchReduceLROnPlateau(ReduceLROnPlateau):

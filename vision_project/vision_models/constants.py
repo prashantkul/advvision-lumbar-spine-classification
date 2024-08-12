@@ -20,3 +20,4 @@ TRAIN_SAMPLE_RATE = 0.4
 TRAIN = "train"
 TEST = "test"
 VAL = "val"
+DISEASE_THRESHOLD = 0.7
