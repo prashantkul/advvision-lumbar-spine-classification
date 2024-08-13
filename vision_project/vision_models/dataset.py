@@ -8,8 +8,8 @@ from typing import Any, Iterator, Tuple
 import time
 from collections import Counter
 
-from vision_models.instance import InstanceCoordinates
-import vision_models.constants as constants
+from instance import InstanceCoordinates
+import constants as constants
 
 from sklearn.model_selection import train_test_split
 

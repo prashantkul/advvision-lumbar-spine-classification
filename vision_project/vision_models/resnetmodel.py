@@ -7,7 +7,7 @@ from keras.optimizers import Adam
 
 #from tensorflow.keras.callbacks import ReduceLROnPlateau
 
-class BatchReduceLROnPlateau(Callback):
+class BatchReduceLROnPlateau(tf.keras.callbacks.ReduceLROnPlateau):
     def __init__(self, monitor='auc', factor=0.5, patience=300, verbose=1, mode='max', min_delta=1e-4, cooldown=150, min_lr=1e-6):
         super(BatchReduceLROnPlateau, self).__init__()
         self.monitor = monitor
@@ -65,17 +65,61 @@ class BatchReduceLROnPlateau(Callback):
     def in_cooldown(self):
         return self.cooldown_counter > 0
 
-# Create the callback
-batch_reduce_lr = BatchReduceLROnPlateau(
-    monitor='auc',
-    factor=0.5,
-    patience=300,    # About 10% of an epoch
-    verbose=1,
-    mode='max',
-    min_delta=1e-4,
-    cooldown=150,    # About 5% of an epoch
-    min_lr=1e-6
-)
+
+class ResNetModelTrainer:
+    def __init__(self, model):
+        self.model = model
+        # Compile the model in the constructor
+        self.compile_model()
+
+    def compile_model(self):
+        # Separate method for model compilation
+        print("Compiling the model...")
+        self.model.compile(
+            optimizer=Adam(),  # Using Adam optimizer with default settings
+            loss="binary_crossentropy",
+            metrics=["binary_accuracy",                 
+                     tf.keras.metrics.AUC(multi_label=True, num_labels=self.model.num_classes),
+                    ],
+        )
+
+    def train(
+        self,
+        train_generator,
+        validation_generator,
+        epochs=1,
+        steps_per_epoch=None,
+        validation_steps=None,
+        class_balancing_weights=None,
+        load_checkpoint=None
+    ):
+        print(f"{'*'*20} Training the model {'*'*20}")        
+        # Define callbacks
+        early_stopping = tf.keras.callbacks.EarlyStopping(
+            monitor="val_loss", patience=5, min_delta=0.001, verbose=1
+        )
+
+        model_checkpoint = tf.keras.callbacks.ModelCheckpoint(
+            filepath="best_model.weights.h5",
+            save_weights_only=True,  # Save only the weights (not the entire model)
+            save_freq='epoch' # Save every epoch
+        )
+
+        reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
+            monitor="val_loss", factor=0.5, patience=3, min_lr=0.00001, verbose=1
+        )
+
+        # Create the callback to monitor AUC within an epoch. 
+        batch_reduce_lr = BatchReduceLROnPlateau(
+            monitor='auc',
+            factor=0.5,
+            patience=300,    # About 10% of an epoch
+            verbose=1,
+            mode='max',
+            min_delta=1e-4,
+            cooldown=150,    # About 5% of an epoch
+            min_lr=1e-6
+        )
 
         self.callbacks = [early_stopping, model_checkpoint, reduce_lr, batch_reduce_lr]
         
