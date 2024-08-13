@@ -1,29 +1,46 @@
 import pandas as pd
 import tensorflow as tf
 
-def tensorize(dataset):
-    predictions_df = pd.get_dummies(dataset, columns=predictions_df.columns.difference(['study_id']))
 
-    # Extract the study_id as a separate array
-    study_ids = predictions_df['study_id'].values
-    features = predictions_df.drop(columns=['study_id']).values
-    # Create a dictionary to store tensors for each study_id
-    tensors_dict = {study_id: tf.convert_to_tensor(features[i], dtype=tf.float32) 
-                    for i, study_id in enumerate(study_ids)}
+def augment(df, disease_predictions):
+    return pd.merge(df, disease_predictions, on=['series_id'], how='left')
 
-    # Calculate the maximum length (number of features) among all tensors
-    max_length = max(tensor.shape[0] for tensor in tensors_dict.values())
 
-    padded_tensors_dict = {}
-    for study_id, tensor in tensors_dict.items():
-        # Calculate the padding needed
-        padding_size = max_length - tensor.shape[0]
-        
-        # Pad the tensor on the right side (after the tensor's last element)
-        # If padding_size > 0, pad with zeros
-        padded_tensor = tf.pad(tensor, paddings=[[0, padding_size]])
-        
-        # Add the padded tensor to the new dictionary
-        padded_tensors_dict[study_id] = padded_tensor
+def tensorize(df, disease_predictions, label_columns, padding_size=None):
+    """
+    Convert a DataFrame into a TensorFlow Dataset with padded tensors for multi-label classification.
 
-    return padded_tensors_dict
+    Parameters:
+    - df: pandas DataFrame containing the data to be tensorized.
+    - disease_predictions: Additional data or parameters required by the augment function.
+    - label_columns: A list of column names representing the labels (severity levels).
+    - padding_size: Optional; the size to pad the tensors to. If None, padding will be based on the largest item.
+
+    Returns:
+    - dataset: A TensorFlow Dataset containing the padded features and labels.
+    """
+    # Augment the dataframe
+    df = augment(df, disease_predictions)
+
+    # Extract features (X) and labels (y)
+    X = df.drop(columns=['composite_key', 'series_id'] + label_columns).values  # Drop non-feature columns
+    y = df[label_columns].applymap(lambda x: {'Normal/Mild': 0, 'Moderate': 1, 'Severe': 2}[x]).values
+
+    # Convert to TensorFlow tensors
+    X_tensor = tf.convert_to_tensor(X, dtype=tf.float32)
+    y_tensor = tf.convert_to_tensor(y, dtype=tf.float32)
+
+    # Determine padding size
+    if padding_size is None:
+        max_size = tf.reduce_max([tf.shape(X_tensor)[0]])
+    else:
+        max_size = padding_size
+
+    # Pad the tensors to the max size
+    X_padded = tf.pad(X_tensor, paddings=[[0, max_size - tf.shape(X_tensor)[0]], [0, 0]], mode='CONSTANT')
+    y_padded = tf.pad(y_tensor, paddings=[[0, max_size - tf.shape(y_tensor)[0]], [0, 0]], mode='CONSTANT')
+
+    # Create a TensorFlow Dataset
+    dataset = tf.data.Dataset.from_tensor_slices((X_padded, y_padded))
+
+    return dataset
