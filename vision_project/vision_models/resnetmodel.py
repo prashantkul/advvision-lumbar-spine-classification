@@ -121,7 +121,7 @@ class ResNetModelTrainer:
             min_lr=1e-6
         )
 
-        self.callbacks = [early_stopping, model_checkpoint, reduce_lr, batch_reduce_lr]
+        self.callbacks = [early_stopping, model_checkpoint, reduce_lr]
         
         if load_checkpoint:
             self.model.load_weights(load_checkpoint)

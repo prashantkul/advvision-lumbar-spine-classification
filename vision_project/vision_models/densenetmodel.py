@@ -98,7 +98,7 @@ class ModelTrainer:
             min_lr=1e-6     # Don't reduce LR below this value
         )
 
-        self.callbacks = [early_stopping, model_checkpoint, reduce_lr, batch_reduce_lr]
+        self.callbacks = [early_stopping, model_checkpoint, reduce_lr]
         
         if load_checkpoint:
             self.model.load_weights(load_checkpoint)
@@ -143,6 +143,10 @@ class DenseNetVisionModel(tf.keras.Model):
             input_shape=self.image_shape
         )
         self.base_model.trainable = False
+        
+        # Unfreeze last 3 layers:
+        for layer in self.base_model.layers[-3:]:
+            layer.trainable = True
 
         self.global_average_layer = tf.keras.layers.GlobalAveragePooling2D()
         
