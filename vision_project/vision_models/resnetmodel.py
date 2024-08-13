@@ -166,6 +166,10 @@ class ResNetVisionModel(tf.keras.Model):
             input_shape=self.image_shape
         )
         self.base_model.trainable = False
+        
+        # Unfreeze last 3 layers:
+        for layer in self.base_model.layers[-3:]:
+            layer.trainable = True
 
         self.global_average_layer = tf.keras.layers.GlobalAveragePooling2D()
         
