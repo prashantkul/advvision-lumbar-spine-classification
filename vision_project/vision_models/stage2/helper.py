@@ -3,7 +3,9 @@ import tensorflow as tf
 
 
 def augment(df, disease_predictions):
-    return pd.merge(df, disease_predictions, on=['series_id'], how='left')
+    df['series_id'] = df['series_id'].astype('int64')
+    disease_predictions['series_id'] = disease_predictions['series_id'].astype('int64')
+    return pd.merge(df, disease_predictions, on='series_id', how='left')
 
 
 def tensorize(df, disease_predictions, label_columns, padding_size=None):
@@ -20,7 +22,7 @@ def tensorize(df, disease_predictions, label_columns, padding_size=None):
     - dataset: A TensorFlow Dataset containing the padded features and labels.
     """
     # Augment the dataframe
-    df = augment(df, disease_predictions)
+    df = augment(df[0], disease_predictions)
 
     # Extract features (X) and labels (y)
     X = df.drop(columns=['composite_key', 'series_id'] + label_columns).values  # Drop non-feature columns
