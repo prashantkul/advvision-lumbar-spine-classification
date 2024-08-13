@@ -1,97 +1,93 @@
 import os
 import numpy as np
-import pandas as pd
 import tensorflow as tf
-from google.cloud import storage
 from keras.models import load_model
 import vision_models.constants as constants
-from vision_models.densenetmodel import DenseNetVisionModel  # Import your model definition
+from vision_models.densenetmodel import DenseNetVisionModel
 from vision_models.dataset import Dataset
-from vision_models.constants import TEST_DATA_PATH, TRAIN_LABEL_PATH, IMAGE_SIZE_HEIGHT, IMAGE_SIZE_WIDTH, TRAIN, TEST, VAL, DISEASE_THRESHOLD
 
-def init():
-    # Set up Google Cloud Storage client
-    client = storage.Client()
-    bucket_name = 'models_output_234324'  # Replace with your bucket name
-    model_path = 'vision_models/stage_1/Densenet/best_model.weights_08112024_1414.h5'  # Replace with the desired model path
+def load_model_with_weights(weights_path, num_classes, input_shape):
 
-    def load_model_from_gcs(bucket_name, model_path, labels):
-        bucket = client.get_bucket(bucket_name)
-        blob = bucket.blob(model_path)
-        local_model_path = '/tmp/model.h5'
-        blob.download_to_filename(local_model_path)
+    # model = tf.keras.models.load_model('linearclassifier.h5')
+    # print(model.layers)
+    # model.evaluate(X_test, y_test)
 
-        # Check or set the expected input shape based on the model's design
-        expected_input_shape = (200, 224, 224, 3)  # This should match what the model expects
-        
-        # Define your model architecture here
-        model = DenseNetVisionModel(input_shape=expected_input_shape, num_classes=len(labels))
+    # Create the model architecture
+    model = DenseNetVisionModel(num_classes=num_classes, input_shape=input_shape, weights=None)
     
-        # Define your model architecture here
-        # model = DenseNetVisionModel(input_shape=(200, IMAGE_SIZE_HEIGHT, IMAGE_SIZE_WIDTH, 3), num_classes=len(labels))
-        # model = DenseNetVisionModel(input_shape=(224, 224, 3), num_classes=len(labels))
-        
-        # Load the weights
-        # model.load_weights(local_model_path)
-        model.load_weights(local_model_path)
-        return model
+    # Load the model weights from the specified file
+    try:
+        model.load_weights(weights_path)
+        print("Model weights loaded successfully.")
+    except Exception as e:
+        print(f"Error when loading weights: {e}")
+        return None
+    
+    # Compile the model (necessary if you want to evaluate it)
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['binary_accuracy'])
+    
+    print(model.summary())  # Optional: print the model summary
+    return model
 
-    # Initialize Dataset
+def prepare_data():
+    # Initialize the dataset
     dataset = Dataset(batch_size=constants.BATCH_SIZE)
-
+    
     # Extract labels from the dataset
     labels = dataset.label_list
+    
+    # Load validation and test data
+    val_data = dataset.load_data(constants.VAL)
+    test_data = dataset.load_data(constants.TEST)
+    
+    return labels, val_data, test_data
 
-    def load_data(data_type):
-        if data_type in [VAL, TEST]:
-            data = dataset.load_data(data_type)
-        else:
-            raise ValueError("data_type must be 'val' or 'test'")
-        return data
-
-    val_data = load_data(VAL)
-    test_data = load_data(TEST)
-
-    def preprocess_input(original_input):
-        # Example: Reshape the input to match the expected input shape for the model
-        processed_input = tf.reshape(original_input, [-1, 224, 224, 3])
-        return processed_input
-
-    def predict_and_save(model, data, threshold=0.7, output_prefix='output'):
-        # Preprocess the input data to match the expected shape
-        data = data.map(lambda x, y: (preprocess_input(x), y))
-
-        # Predict probabilities
-        predictions = model.predict(data)
-
-        # Flattening data to match the original shape
-        predictions = np.vstack([pred for pred in predictions])
-
-        # Save probabilities to CSV
-        probs_csv_path = f'{output_prefix}_probabilities.csv'
-        np.savetxt(probs_csv_path, predictions, delimiter=",")
-        print(f'Saved probabilities to {probs_csv_path}')
-
-        # Convert to binary based on threshold
-        binary_predictions = (predictions > threshold).astype(int)
-        binary_csv_path = f'{output_prefix}_binary.csv'
-        np.savetxt(binary_csv_path, binary_predictions, delimiter=",")
-        print(f'Saved binary predictions to {binary_csv_path}')
-
-    return load_model_from_gcs, val_data, test_data, predict_and_save, bucket_name, model_path, labels
+def predict_and_save(model, data, slices, output_prefix='output', threshold=0.7):
+    # Make predictions
+    predictions = model.predict(data)
+    
+    # Save the probabilities to CSV
+    probs_csv_path = f'{output_prefix}_probabilities.csv'
+    np.savetxt(probs_csv_path, predictions, delimiter=",")
+    print(f'Saved probabilities to {probs_csv_path}')
+    
+    # Convert to binary predictions based on threshold
+    binary_predictions = (predictions > threshold).astype(int)
+    binary_csv_path = f'{output_prefix}_binary.csv'
+    np.savetxt(binary_csv_path, binary_predictions, delimiter=",")
+    print(f'Saved binary predictions to {binary_csv_path}')
 
 def main():
-    load_model_from_gcs, val_data, test_data, predict_and_save, bucket_name, model_path, labels = init()
+    # Define the path to your weights file in the Git folder
+    weights_path = 'vision_projects/vision_models_stage_1_Densenet_best_model.weights_08112024_1414.h5'
+    
+    # Initialize the dataset
+    dataset = Dataset(batch_size=constants.BATCH_SIZE)
+    
+    # Extract labels from the dataset
+    labels = dataset.label_list
+    
+    # Define model parameters
+    slices = 200  # Number of slices per input sequence
+    input_shape = (slices, 224, 224, 3)  # Adjust according to your model
+    num_classes = len(labels)  # Define this as per your setup
 
-    # Load the model
-    model = load_model_from_gcs(bucket_name, model_path, labels)
-
-    # Choose data type to run predictions on
-    data_type = VAL  # Change to TEST if needed
-    data = val_data if data_type == VAL else test_data
-
-    # Run predictions and save the results
-    predict_and_save(model, data, threshold=DISEASE_THRESHOLD, output_prefix=f'{data_type}_set')
+    # Load the model with the weights
+    model = load_model_with_weights(weights_path, num_classes=num_classes, input_shape=input_shape)
+    
+    if model is None:
+        print("Model could not be loaded. Exiting.")
+        return
+    
+    # Prepare data
+    labels, val_data, test_data = prepare_data()
+    
+    # Choose the data type (validation or test) and make predictions
+    data_type = constants.VAL  # or constants.TEST
+    data = val_data if data_type == constants.VAL else test_data
+    
+    # Make predictions and save the results
+    predict_and_save(model, data, slices, output_prefix=f'{data_type}_set')
 
 if __name__ == '__main__':
     main()
