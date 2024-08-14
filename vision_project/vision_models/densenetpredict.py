@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import os
-from densenetmodel import DenseNetVisionModel
+from vision_models.densenetmodel import DenseNetVisionModel
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -13,6 +13,7 @@ class DenseNetModelPredictor:
         self.num_classes = num_classes
         self.input_shape = input_shape
         self.model = self.load_model(weights_path)
+    
 
     def load_model(self, weights_path):
         if not os.path.exists(weights_path):
@@ -59,7 +60,7 @@ class DenseNetModelPredictor:
         
         return batch_predictions
 
-    def interpret_predictions(self, predictions, threshold=0.1):
+    def interpret_predictions(self, predictions, threshold=0.2):
         """
         Interpret raw predictions into binary format.
         
@@ -137,64 +138,83 @@ class DenseNetModelPredictor:
         plt.close(fig)  # Close the figure to free up memory
         print(f"Visualization saved to {file_path}")
     
-    def evaluate(self, dataset, threshold=0.5, adjustment=0):
-        """
-        Evaluate the model on the given dataset and compute accuracy, precision, recall, and F1 score.
-        
-        :param dataset: TensorFlow dataset containing both features and labels
-        :param threshold: Threshold for interpreting predictions (default 0.5)
-        :param adjustment: Constant value to add to all predictions before thresholding (default 0)
-        :return: Dictionary containing evaluation metrics
-        """
+
+    def evaluate(self, dataset_samples):
         all_predictions = []
         all_labels = []
         
-        for batch in dataset:
+        for batch in dataset_samples:
             features, labels = batch
             predictions = self.predict(features)
-            all_predictions.append(predictions)
+            
+            
+            # Get the index (class) with the highest probability
+            max_prob_indices = np.argmax(predictions, axis=1)
+            
+            # Create a one-hot encoded array where the highest probability is 1 and others are 0
+            interpreted_predictions = np.eye(predictions.shape[1])[max_prob_indices]
+            print("Labels: ", labels)
+            print("Predictions: ", interpreted_predictions)
+            
+            all_predictions.append(interpreted_predictions)
             all_labels.append(labels.numpy())
         
-        # Concatenate all batches
         predictions = np.concatenate(all_predictions, axis=0)
         labels = np.concatenate(all_labels, axis=0)
         
-        # Adjust predictions
-        adjusted_predictions = np.clip(predictions + adjustment, 0, 1)
+        # Debug information
+        print("Predictions shape:", predictions.shape)
+        print("Labels shape:", labels.shape)
+        print("Predictions dtype:", predictions.dtype)
+        print("Labels dtype:", labels.dtype)
+        print("Unique prediction values:", np.unique(predictions))
+        print("Unique label values:", np.unique(labels))
         
-        # Interpret predictions
-        interpreted_predictions = (adjusted_predictions >= threshold).astype(int)
+        # Read test_split.csv
+        test_df = pd.read_csv('test_split.csv')
+        
+        # Get unique class values from test_split.csv
+        label_list = sorted(test_df['class'].unique())
+        
+        # Ensure the number of predictions matches the number of samples
+        assert predictions.shape[0] == labels.shape[0], f"Number of predictions ({predictions.shape[0]}) doesn't match number of labels ({labels.shape[0]})"
+        
+        # Create a DataFrame with detailed results, using only the number of samples we have predictions for
+        num_samples = predictions.shape[0]
+        results_df = pd.DataFrame({
+            'study_id': test_df['study_id'].iloc[:num_samples].values,  # Only use the first num_samples study_ids
+        })
+        
+        # Add columns for each class prediction and true label
+        for i, class_name in enumerate(label_list):
+            results_df[f'{class_name}_pred'] = predictions[:, i]
+            results_df[f'{class_name}_true'] = labels[:, i]
         
         # Compute metrics
-        accuracy = accuracy_score(labels, interpreted_predictions)
-        precision_micro = precision_score(labels, interpreted_predictions, average='micro')
-        recall_micro = recall_score(labels, interpreted_predictions, average='micro')
-        f1_micro = f1_score(labels, interpreted_predictions, average='micro')
+        accuracy = accuracy_score(labels, predictions)
         
-        # Compute metrics for each class
-        precision_per_class = precision_score(labels, interpreted_predictions, average=None)
-        recall_per_class = recall_score(labels, interpreted_predictions, average=None)
-        f1_per_class = f1_score(labels, interpreted_predictions, average=None)
+        try:
+            precision_micro = precision_score(labels, predictions, average='micro', zero_division=0)
+            recall_micro = recall_score(labels, predictions, average='micro', zero_division=0)
+            f1_micro = f1_score(labels, predictions, average='micro', zero_division=0)
+        except Exception as e:
+            print(f"Error computing metrics: {str(e)}")
+            precision_micro = recall_micro = f1_micro = None
         
         results = {
             'accuracy': accuracy,
             'precision_micro': precision_micro,
             'recall_micro': recall_micro,
             'f1_score_micro': f1_micro,
-            'per_class_metrics': {
-                f'Class_{i}': {
-                    'precision': precision_per_class[i],
-                    'recall': recall_per_class[i],
-                    'f1_score': f1_per_class[i]
-                } for i in range(len(f1_per_class))
-            },
-            'threshold_used': threshold,
-            'adjustment_used': adjustment
+            'detailed_results': results_df
         }
         
+        # # Save detailed results to CSV
+        # csv_filename = f"evaluation_results_samples_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        # results_df.to_csv(csv_filename, index=False)
+        # print(f"\nDetailed evaluation results saved to {csv_filename}")
+        
         return results
-
-# Usage example:
 # weights_path = "best_model.weights.h5"
 # num_classes = 25
 # input_shape = (192, 224, 224, 3)

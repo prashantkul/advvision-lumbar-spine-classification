@@ -72,7 +72,7 @@ class Dataset:
         # Select the corresponding labels from label_list
         human_readable_labels = [label_list[i] for i in indices_with_ones]
         # Output the labels
-        print("Human-readable labels:", human_readable_labels)
+        #print("Human-readable labels:", human_readable_labels)
         
     def _create_train_label_cord_dataframe(self):
         """
@@ -259,6 +259,9 @@ class Dataset:
         start_time = time.time()
 
         df_copy = df.copy()
+        
+        # List to collect data for the new DataFrame
+        data_for_csv: List[Dict] = []
             
         while not df_copy.empty:
             print(f"* Generating samples for {split} split *")
@@ -289,9 +292,24 @@ class Dataset:
                 print(f"Error: Label '{label}' not found in the label list")
 
             label_one_hot_vector = tf.one_hot(label_vector, depth=len(self.label_list))
+            human_readable_label = self._create_human_readable_label(label_one_hot_vector, self.label_list)
+            # Collect data for the new DataFrame
+            data_for_csv.append({
+                'study_id': study_id,
+                'series_id': series_id,
+                'label_vector': label_one_hot_vector.numpy().tolist(),
+                'human_readable_label': human_readable_label
+            })
 
             yield img_tensor, label_one_hot_vector
             
+        # Create DataFrame from collected data
+        result_df = pd.DataFrame(data_for_csv)
+
+        # Write DataFrame to CSV
+        csv_filename = f"{split}_data_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+        result_df.to_csv(csv_filename, index=False)
+        print(f"Data written to {csv_filename}")
         
         self._print_generator_stats(count, total_rows, unique_study_ids, unique_labels, start_time, split)
 
