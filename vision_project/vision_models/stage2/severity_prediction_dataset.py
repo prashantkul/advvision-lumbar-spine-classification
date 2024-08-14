@@ -7,9 +7,10 @@ from vision_models.stage2.helper import augment, tensorize
 
 class SeverityPredictionDataset(Dataset):
 
-    def __init__(self, disease_predictions, balance_variables):
+    def __init__(self, disease_predictions, balance_variables, severity_ground_truth):
         self.disease_predictions = disease_predictions
         self.balance_variables = balance_variables
+        self.severity_ground_truth = severity_ground_truth
         super().__init__(constants.BATCH_SIZE)
 
     def _create_split(self, df):
@@ -19,7 +20,6 @@ class SeverityPredictionDataset(Dataset):
         # Create a composite key of the specified variables
         df['composite_key'] = df.apply(lambda row: '_'.join([str(row[var]) for var in balance_vars if var in df.columns]), axis=1)
     
-
         # Assign a composite key to each series_id
         series_key_mapping = df.groupby('series_id')['composite_key'].agg(lambda x: '_'.join(set(x))).reset_index()
 
@@ -46,13 +46,10 @@ class SeverityPredictionDataset(Dataset):
         return train_split, val_split, test_split, df
 
     def _prepare_data(self):
-        # Read the label coordinates CSV file and create a DataFrame
         df = self._create_train_label_cord_dataframe()
         self.train_df, self.val_df, self.test_df, self.split_data = self._create_split(df)
         for df in [self.train_df, self.val_df, self.test_df, self.split_data]:
-            tensorize(df, self.disease_predictions, label_columns=self.balance_variables)
-        # self.train_df, self.val_df, self.test_df, self.split_data = tensorize(
-        #     self._create_split(df), self.disease_predictions, label_columns=self.balance_variables)
+            tensorize(df, self.disease_predictions, label_columns=self.balance_variables, severity=self.severity_ground_truth)
 
         # Extract unique labels and store them from labels.csv
         self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()
