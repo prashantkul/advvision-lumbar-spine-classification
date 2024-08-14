@@ -1,0 +1,3 @@
+dataset_name,model_type,mae,rmse
+Validation,resnet,163.8998740912559,172.7833195358002
+Validation,resnet,62.70425342124602,75.0351434657081
