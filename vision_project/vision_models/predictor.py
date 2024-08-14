@@ -1,5 +1,4 @@
 import tensorflow as tf
-import numpy as np
 import pandas as pd
 import constants
 from vision_models.densenetpredict import DenseNetModelPredictor
@@ -8,13 +7,16 @@ from vision_models.dataset import Dataset
 import csv
 import matplotlib.pyplot as plt
 import seaborn as sns
-from tfidgenerator import TFSampleIDGenerator
+from vision_models.resnetmodel import ResNetVisionModel
 
 # Usage example:
 weights_path = "best_model.weights.h5"
 num_classes = 25
 input_shape = (200, 224, 224, 3)
-batch_size = 4
+batch_size = 10
+num_samples = 9739
+pred_arch_type = "ResNet" # change this to "DenseNet" to use the DenseNet model, or "ResNet" to use the ResNet model
+res_weights_path = "resnet/best_model.weights.h5"
 
 def _get_strategy():
         gpus = tf.config.experimental.list_physical_devices('GPU')
@@ -35,18 +37,27 @@ def load_data(mode):
         dataset = image_loader.load_data(mode)
 
         return dataset
-        
-# Initialize your predictor
-predictor = DenseNetModelPredictor(weights_path, num_classes, input_shape)
+
+policy = tf.keras.mixed_precision.Policy('mixed_float16')
+tf.keras.mixed_precision.set_global_policy(policy)
+
+# Get the appropriate strategy
+strategy = _get_strategy()
+
+# Initialize your predictor within the strategy scope
+with strategy.scope():
+    if pred_arch_type == "DenseNet":
+        predictor = DenseNetModelPredictor(weights_path, num_classes, input_shape, pred_arch_type)
+    elif pred_arch_type == "ResNet":
+        predictor = DenseNetModelPredictor(res_weights_path, num_classes, input_shape, pred_arch_type=pred_arch_type)
 
 # Initialize your dataset
 dataset = load_data(constants.TEST)
 
-# Take 100 samples
-dataset_samples = dataset.take(10)
+step_size = num_samples // batch_size
 
 # Run evaluation
-evaluation_results = predictor.evaluate(dataset_samples)
+evaluation_results = predictor.evaluate(dataset, step_size)
 
 # Print results
 print("\nEvaluation Results:")
@@ -70,12 +81,5 @@ else:
             print(f"{metric}: {value:.4f}")
         else:
             print(f"{metric}: {value}")
-
-    if 'detailed_results' in evaluation_results:
-        detailed_results = evaluation_results['detailed_results']
-        print("\nDetailed Results Summary:")
-        print(f"Number of samples: {len(detailed_results)}")
-        print("First few rows:")
-        print(detailed_results.head())
 
 

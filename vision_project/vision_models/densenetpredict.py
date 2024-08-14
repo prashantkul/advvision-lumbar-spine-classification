@@ -2,25 +2,31 @@ import tensorflow as tf
 import numpy as np
 import os
 from vision_models.densenetmodel import DenseNetVisionModel
+from vision_models.resnetmodel import ResNetVisionModel
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, confusion_matrix
+from collections import Counter
 
 
 class DenseNetModelPredictor:
-    def __init__(self, weights_path, num_classes, input_shape):
+    def __init__(self, weights_path, num_classes, input_shape, pred_arch_type):
         self.num_classes = num_classes
         self.input_shape = input_shape
+        self.pred_arch_type = pred_arch_type
         self.model = self.load_model(weights_path)
-    
+        
 
     def load_model(self, weights_path):
         if not os.path.exists(weights_path):
             raise FileNotFoundError(f"Weights file not found: {weights_path}")
 
         # Create an instance of your model
-        model = DenseNetVisionModel(self.num_classes, self.input_shape)
+        if self.pred_arch_type == "DenseNet":
+            model = DenseNetVisionModel(self.num_classes, self.input_shape)
+        elif self.pred_arch_type == "ResNet":
+            model = ResNetVisionModel(self.num_classes, self.input_shape)
         
         # Build the model by calling it on a dummy input
         dummy_input = tf.zeros((1,) + self.input_shape)
@@ -139,80 +145,72 @@ class DenseNetModelPredictor:
         print(f"Visualization saved to {file_path}")
     
 
-    def evaluate(self, dataset_samples):
-        all_predictions = []
-        all_labels = []
+    def evaluate(self, dataset, steps):
+        # Separate features and labels
+        features_dataset = dataset.map(lambda x, y: x)
+        labels_dataset = dataset.map(lambda x, y: y)
         
-        for batch in dataset_samples:
-            features, labels = batch
-            predictions = self.predict(features)
-            
-            
-            # Get the index (class) with the highest probability
-            max_prob_indices = np.argmax(predictions, axis=1)
-            
-            # Create a one-hot encoded array where the highest probability is 1 and others are 0
-            interpreted_predictions = np.eye(predictions.shape[1])[max_prob_indices]
-            print("Labels: ", labels)
-            print("Predictions: ", interpreted_predictions)
-            
-            all_predictions.append(interpreted_predictions)
-            all_labels.append(labels.numpy())
+        # Make predictions on the entire dataset
+        predictions = self.model.predict(features_dataset, steps=steps)
         
-        predictions = np.concatenate(all_predictions, axis=0)
-        labels = np.concatenate(all_labels, axis=0)
+        # Get labels by iterating through complete dataset
+        labels = np.concatenate([y.numpy() for y in labels_dataset], axis=0)
         
-        # Debug information
-        print("Predictions shape:", predictions.shape)
+        print("Raw predictions shape:", predictions.shape)
         print("Labels shape:", labels.shape)
-        print("Predictions dtype:", predictions.dtype)
-        print("Labels dtype:", labels.dtype)
-        print("Unique prediction values:", np.unique(predictions))
-        print("Unique label values:", np.unique(labels))
         
-        # Read test_split.csv
-        test_df = pd.read_csv('test_split.csv')
+        # Ensure predictions and labels have the same first dimension
+        min_samples = min(predictions.shape[0], labels.shape[0])
+        predictions = predictions[:min_samples]
+        labels = labels[:min_samples]
         
-        # Get unique class values from test_split.csv
-        label_list = sorted(test_df['class'].unique())
+        # Select the class with the highest probability for each prediction
+        pred_classes = np.argmax(predictions, axis=1)
+        true_classes = np.argmax(labels, axis=1)
+
+        # Create interpreted predictions (one-hot encoded)
+        interpreted_predictions = np.eye(predictions.shape[1])[pred_classes]
         
-        # Ensure the number of predictions matches the number of samples
-        assert predictions.shape[0] == labels.shape[0], f"Number of predictions ({predictions.shape[0]}) doesn't match number of labels ({labels.shape[0]})"
+        print("Interpreted predictions shape:", interpreted_predictions.shape) 
+        print("Predicted classes shape:", pred_classes.shape)
+        print("True classes shape:", true_classes.shape)
         
-        # Create a DataFrame with detailed results, using only the number of samples we have predictions for
-        num_samples = predictions.shape[0]
-        results_df = pd.DataFrame({
-            'study_id': test_df['study_id'].iloc[:num_samples].values,  # Only use the first num_samples study_ids
-        })
+        # Compute confusion matrix
+        cm = confusion_matrix(true_classes, pred_classes)
         
-        # Add columns for each class prediction and true label
-        for i, class_name in enumerate(label_list):
-            results_df[f'{class_name}_pred'] = predictions[:, i]
-            results_df[f'{class_name}_true'] = labels[:, i]
+        # Plot confusion matrix
+        plt.figure(figsize=(12, 10))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+        plt.title('Confusion Matrix')
+        plt.ylabel('True Label')
+        plt.xlabel('Predicted Label')
+        plt.savefig('confusion_matrix.png')
+        plt.close()
+        print("\nConfusion matrix has been saved as 'confusion_matrix.png'")
         
         # Compute metrics
-        accuracy = accuracy_score(labels, predictions)
-        
-        try:
-            precision_micro = precision_score(labels, predictions, average='micro', zero_division=0)
-            recall_micro = recall_score(labels, predictions, average='micro', zero_division=0)
-            f1_micro = f1_score(labels, predictions, average='micro', zero_division=0)
-        except Exception as e:
-            print(f"Error computing metrics: {str(e)}")
-            precision_micro = recall_micro = f1_micro = None
+        accuracy = accuracy_score(true_classes, pred_classes)
+        precision_micro = precision_score(true_classes, pred_classes, average='micro', zero_division=0)
+        recall_micro = recall_score(true_classes, pred_classes, average='micro', zero_division=0)
+        f1_micro = f1_score(true_classes, pred_classes, average='micro', zero_division=0)
         
         results = {
             'accuracy': accuracy,
             'precision_micro': precision_micro,
             'recall_micro': recall_micro,
-            'f1_score_micro': f1_micro,
-            'detailed_results': results_df
+            'f1_score_micro': f1_micro
         }
         
-        # # Save detailed results to CSV
-        # csv_filename = f"evaluation_results_samples_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        # results_df.to_csv(csv_filename, index=False)
-        # print(f"\nDetailed evaluation results saved to {csv_filename}")
+        # Print additional information
+        print("\nPrediction distribution:")
+        unique, counts = np.unique(pred_classes, return_counts=True)
+        for class_idx, count in zip(unique, counts):
+            print(f"Class {class_idx}: {count}")
+        
+        print("\nTrue label distribution:")
+        unique, counts = np.unique(true_classes, return_counts=True)
+        for class_idx, count in zip(unique, counts):
+            print(f"Class {class_idx}: {count}")
         
         return results
 # weights_path = "best_model.weights.h5"
