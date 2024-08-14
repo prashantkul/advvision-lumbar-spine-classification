@@ -21,19 +21,16 @@ dataset_instance = SeverityPredictionDataset(
 )
 
 stage_1_target_labels = pd.read_csv('vision_models/stage2/data/train_label_coordinates.csv')
-dataset_instance = dataset_instance.augment(predictions=stage_1_target_labels)
+dataset  = dataset_instance.load_data("test")
 
-dataset_instance = tensorize(dataset_instance)
-dataset, steps_per_epoch  = dataset_instance.load_data("test")
-
-print("Steps per epoch: ", steps_per_epoch)
+# Create an iterator
 iterator = iter(dataset)
 
 try:
     element = dataset.take(1)
     for img, label in element:
-        print("Image tensor shape: ", img.shape)
+        print("Image tensor shape: ", img.shape)  
         print("Label tensor shape: ", label.shape)
-        break
+        break  
 except tf.errors.OutOfRangeError:
     print("End of dataset")

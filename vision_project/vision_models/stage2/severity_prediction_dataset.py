@@ -48,8 +48,11 @@ class SeverityPredictionDataset(Dataset):
     def _prepare_data(self):
         # Read the label coordinates CSV file and create a DataFrame
         df = self._create_train_label_cord_dataframe()
-        self.train_df, self.val_df, self.test_df, self.split_data = tensorize(
-            self._create_split(df), self.disease_predictions, label_columns=self.balance_variables)
+        self.train_df, self.val_df, self.test_df, self.split_data = self._create_split(df)
+        for df in [self.train_df, self.val_df, self.test_df, self.split_data]:
+            tensorize(df, self.disease_predictions, label_columns=self.balance_variables)
+        # self.train_df, self.val_df, self.test_df, self.split_data = tensorize(
+        #     self._create_split(df), self.disease_predictions, label_columns=self.balance_variables)
 
         # Extract unique labels and store them from labels.csv
         self.label_list = pd.read_csv(self.labels_csv).columns[1:].tolist()

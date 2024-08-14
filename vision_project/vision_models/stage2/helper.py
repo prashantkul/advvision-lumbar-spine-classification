@@ -1,11 +1,33 @@
 import pandas as pd
 import tensorflow as tf
+from sklearn.preprocessing import LabelEncoder
 
 
 def augment(df, disease_predictions):
     df['series_id'] = df['series_id'].astype('int64')
     disease_predictions['series_id'] = disease_predictions['series_id'].astype('int64')
     return pd.merge(df, disease_predictions, on='series_id', how='left')
+
+def label_encode_strings(df):
+    """
+    Label encodes all string (object) columns in the DataFrame.
+
+    Parameters:
+    df (pd.DataFrame): The DataFrame containing string columns to encode.
+
+    Returns:
+    pd.DataFrame: DataFrame with string columns label encoded.
+    dict: A dictionary of LabelEncoders used for each column.
+    """
+    label_encoders = {}
+    df_encoded = df.copy()  # Make a copy of the DataFrame to avoid modifying the original
+
+    for column in df_encoded.select_dtypes(include=['object']).columns:
+        le = LabelEncoder()
+        df_encoded[column] = le.fit_transform(df_encoded[column])
+        label_encoders[column] = le  # Save the encoder for potential inverse transformation
+
+    return df_encoded, label_encoders
 
 
 def tensorize(df, disease_predictions, label_columns, padding_size=None):
@@ -22,11 +44,12 @@ def tensorize(df, disease_predictions, label_columns, padding_size=None):
     - dataset: A TensorFlow Dataset containing the padded features and labels.
     """
     # Augment the dataframe
-    df = augment(df[0], disease_predictions)
+    df = augment(df, disease_predictions)
+    df, _ = label_encode_strings(df)
 
     # Extract features (X) and labels (y)
-    X = df.drop(columns=['composite_key', 'series_id'] + label_columns).values  # Drop non-feature columns
-    y = df[label_columns].applymap(lambda x: {'Normal/Mild': 0, 'Moderate': 1, 'Severe': 2}[x]).values
+    X = df.drop(columns=['composite_key', 'series_id', 'condition']).values
+    y = df[label_columns]
 
     # Convert to TensorFlow tensors
     X_tensor = tf.convert_to_tensor(X, dtype=tf.float32)
