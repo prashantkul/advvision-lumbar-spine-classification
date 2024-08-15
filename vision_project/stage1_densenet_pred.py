@@ -59,7 +59,7 @@ def predict_and_save(model, data, slices, output_prefix='output', threshold=0.7)
 
 def main():
     # Define the path to your weights file in the Git folder
-    weights_path = 'vision_projects/vision_models_stage_1_Densenet_best_model.weights_08112024_1414.h5'
+    weights_path = 'vision_project/vision_models_stage_1_Densenet_best_model.weights_08132024_0053.h5'
     
     # Initialize the dataset
     dataset = Dataset(batch_size=constants.BATCH_SIZE)
