@@ -1,0 +1,2 @@
+dataset_name,model_type,mae,rmse
+Test,cnn,58.820325038074785,75.38484528240134

@@ -1,0 +1,2 @@
+dataset_name,model_type,mae,rmse
+Test,resnet,66.63494289594733,82.17507221191238
