@@ -19,16 +19,12 @@ Data Exploration and Preprocessing:
 - imageloader.py defines a class for loading our dataset, establishing the train/validate/test subsets, and application of Gaussian Attention Mask to each image
 
 Models:
-- densenetmodel.py contains a DenseNet-based transfer learning model for Stage 1 predictions (classification of each condition at each spinal level)
-- Champion and Challenger models are in development for Stage 2 (prediction of severity for each condition at each spinal level)
-- a Challenger model based on ResNet architecture is also in development for Stage 1 predicitons.
+- Transfer learning models for Stage 1 predictions (classification of each condition at each spinal level) can be found in the vision_models folder
+- Additional models (Stage 0, Stage 2, auxilary models) are located in subfolders within vision_models
 
 Model Training, Evaluation, and Predictions:
-- trainer.py
-- predict.py
-- convert_predictions.ipynb
+- trainer.py and resnettrainer.py contain class wrappers for methods used in trainign the two Stage 1 transfer learning models
+- predict.py contains class wrappers for methods used to generate predictions from and evaluate trained models
 
 Environment, Variables, and Utilities:
-- utils.py contains a class wrapper for a collection of helper functions used throughout the other code files
-- constants.py defines a collection of variables used throughout the other code files
 - environment.yml contains the setup for our virtual machine, including the specific versions of python packages used
