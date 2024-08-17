@@ -1,6 +1,6 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from vision_models import constants
+from vision_project.vision_models.stage1 import constants
 from vision_models.dataset import Dataset
 from vision_models.stage2.helper import augment, tensorize
 
